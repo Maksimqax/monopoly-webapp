@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Monopoly WebApp</title>
+  <link rel="stylesheet" href="./style.css"/>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Монополия — WebApp</h1>
+    <div class="bar">
+      <input id="room" placeholder="room id" />
+      <button id="btnJoin">Войти</button>
+      <button id="btnStart">Старт</button>
+      <button id="btnRoll">🎲</button>
+      <button id="btnBuy">Купить</button>
+      <button id="btnEnd">Конец хода</button>
+    </div>
+
+    <div id="you"></div>
+    <div id="turn"></div>
+
+    <div id="players" class="players"></div>
+    <div id="board" class="board"></div>
+
+    <pre id="log"></pre>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
