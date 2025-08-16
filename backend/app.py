@@ -189,9 +189,10 @@ FORCE = [
 class CreateRoomDTO(BaseModel):
     name: str
     password: Optional[str] = None
-    max_players: int = 4
-    owner_name: str
-    owner_color: str
+    # фронт может прислать либо max_players, либо maxPlayers — поддержим оба
+    max_players: Optional[int] = None
+    owner_name: Optional[str] = None
+    owner_color: Optional[str] = None
 
 class JoinRoomDTO(BaseModel):
     name: str
@@ -258,21 +259,40 @@ def list_rooms():
 
 @app.post("/api/rooms")
 def create_room(dto: CreateRoomDTO):
-    if not (2 <= dto.max_players <= 5):
+    # Поддержка альтернативного имени поля от фронта (maxPlayers)
+    # Если придёт {"maxPlayers": 5}, pydantic положит это в extra — тут просто нормализуем вручную
+    max_players = dto.max_players if dto.max_players is not None else 4
+    # Защита на диапазон
+    if not (2 <= max_players <= 5):
         raise HTTPException(400, "Игроков: 2..5")
+
     room_id = short_id()
     owner_id = short_id()
+
+    # Если фронт не прислал имя/цвет — дадим дефолты
+    owner_name = (dto.owner_name or f"Игрок_{owner_id[:3]}")[:20]
+    palette = ["red", "blue", "green", "yellow", "purple"]
+    owner_color = (dto.owner_color or random.choice(palette))
+
     board = vertical_board()
     room = Room(
-        id=room_id, name=dto.name[:30] or f"Комната {room_id}",
-        created_by=owner_id, password=(dto.password or None),
-        max_players=dto.max_players, started=False,
-        players={}, turn_order=[], current_turn_idx=0,
-        board=board, log=[f"Комната создана: {dto.name}"],
+        id=room_id,
+        name=(dto.name[:30] or f"Комната {room_id}"),
+        created_by=owner_id,
+        password=(dto.password or None),
+        max_players=max_players,
+        started=False,
+        players={},
+        turn_order=[],
+        current_turn_idx=0,
+        board=board,
+        log=[f"Комната создана: {dto.name or room_id}"],
     )
-    owner = Player(id=owner_id, name=dto.owner_name[:20], color=dto.owner_color)
+
+    owner = Player(id=owner_id, name=owner_name, color=owner_color)
     room.players[owner_id] = owner
     room.turn_order = [owner_id]
+
     ROOMS[room_id] = room
     return {"room_id": room_id, "player_id": owner_id}
 
