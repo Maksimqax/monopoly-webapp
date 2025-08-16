@@ -1,12 +1,26 @@
-# backend/app.py
+# backend/app.py  (или app.py в корне — работает в обоих вариантах)
 import random
 import string
 import time
 from typing import Dict, List, Optional, Literal
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+
+# --- безопасно определяем, где лежит webapp (рядом или на уровень выше) ---
+HERE = Path(__file__).resolve().parent
+CANDIDATES = [HERE / "webapp", (HERE / ".." / "webapp").resolve()]
+STATIC_DIR = next((p for p in CANDIDATES if p.exists()), None)
+if STATIC_DIR is None:
+    # Не валимся, но даём понятную подсказку в логах Render
+    # (приложение поднимется, но раздача фронта будет неактивной)
+    print("WARNING: 'webapp' directory not found near backend or repo root.")
+else:
+    print(f"Static dir: {STATIC_DIR}")
 
 app = FastAPI(title="Monopoly WebApp — full + auction/mortgage/trade")
 
@@ -17,18 +31,20 @@ app.add_middleware(
     allow_methods=["*"],
 )
 
-# Раздача фронта
-app.mount("/static", StaticFiles(directory="webapp"), name="static")
+# Раздача фронта, если нашли папку
+if STATIC_DIR and STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/")
 def index():
-    from fastapi.responses import FileResponse
-    return FileResponse("webapp/index.html")
+    if STATIC_DIR and (STATIC_DIR / "index.html").exists():
+        return FileResponse(str(STATIC_DIR / "index.html"))
+    # fallback: текст, если вдруг нет фронта (на всякий)
+    return {"ok": True, "msg": "Front not found. Put 'webapp/' near backend or repo root."}
 
 # ========= базовые сущности =========
 
 def short_id(n=6) -> str:
-    import string, random
     return "".join(random.choice(string.ascii_uppercase + string.digits) for _ in range(n))
 
 Money = int
@@ -58,7 +74,7 @@ class Tile(BaseModel):
     house_level: int = 0  # 0..5 (5=отель)
     group: Optional[str] = None
     tax_amount: Money = 0
-    mortgaged: bool = False  # <<< ипотека
+    mortgaged: bool = False  # ипотека
 
 class Auction(BaseModel):
     active: bool = False
@@ -114,49 +130,41 @@ def tax(name, amt):
 def vertical_board() -> List[Tile]:
     return [
         Tile(kind="start", name="СТАРТ"),
-
         prop("Mediterranean Ave", "brown", 60, 50,  [2,10,30,90,160,250]),
         Tile(kind="force", name="Форс-мажор"),
         prop("Baltic Ave", "brown", 60, 50,        [4,20,60,180,320,450]),
         tax("Подоходный налог", 200),
         rr("Reading Railroad"),
-
         prop("Oriental Ave", "lightblue", 100, 50, [6,30,90,270,400,550]),
         Tile(kind="chance", name="Шанс"),
         prop("Vermont Ave", "lightblue", 100, 50,  [6,30,90,270,400,550]),
         prop("Connecticut Ave", "lightblue", 120,50,[8,40,100,300,450,600]),
         Tile(kind="jail", name="Тюрьма/Визит"),
-
         prop("St. Charles Place","pink",140,100,   [10,50,150,450,625,750]),
         util("Electric Company"),
         prop("States Ave","pink",160,100,          [12,60,180,500,700,900]),
         prop("Virginia Ave","pink",160,100,        [12,60,180,500,700,900]),
         rr("Pennsylvania Railroad"),
-
         prop("St. James Place","orange",180,100,   [14,70,200,550,750,950]),
         Tile(kind="force", name="Форс-мажор"),
         prop("Tennessee Ave","orange",180,100,     [14,70,200,550,750,950]),
         prop("New York Ave","orange",200,100,      [16,80,220,600,800,1000]),
         Tile(kind="empty", name="Бесплатная стоянка"),
-
         prop("Kentucky Ave","red",220,150,         [18,90,250,700,875,1050]),
         Tile(kind="chance", name="Шанс"),
         prop("Indiana Ave","red",220,150,          [18,90,250,700,875,1050]),
         prop("Illinois Ave","red",240,150,         [20,100,300,750,925,1100]),
         rr("B. & O. Railroad"),
-
         prop("Atlantic Ave","yellow",260,150,      [22,110,330,800,975,1150]),
         prop("Ventnor Ave","yellow",260,150,       [22,110,330,800,975,1150]),
         util("Water Works"),
         prop("Marvin Gardens","yellow",280,150,    [24,120,360,850,1025,1200]),
         Tile(kind="gotojail", name="Отправиться в тюрьму"),
-
         prop("Pacific Ave","green",300,200,        [26,130,390,900,1100,1275]),
         prop("North Carolina Ave","green",300,200, [26,130,390,900,1100,1275]),
         Tile(kind="force", name="Форс-мажор"),
         prop("Pennsylvania Ave","green",320,200,   [28,150,450,1000,1200,1400]),
         rr("Short Line Railroad"),
-
         Tile(kind="chance", name="Шанс"),
         prop("Park Place","darkblue",350,200,      [35,175,500,1100,1300,1500]),
         tax("Налог на роскошь", 100),
@@ -303,7 +311,7 @@ def start_room(room_id: str, dto: StartRoomDTO):
 
 def ensure_turn(room: Room, player_id: str):
     if not room.started: raise HTTPException(400, "Игра ещё не началась")
-    if room.auction.active:  # во время аукциона ходы недоступны
+    if room.auction.active:
         raise HTTPException(400, "Сейчас идёт аукцион")
     current_id = room.turn_order[room.current_turn_idx]
     if current_id != player_id:
@@ -352,7 +360,7 @@ def utilities_owned(room: Room, owner: str) -> int:
 def pay_rent(room: Room, who: Player, tile: Tile):
     owner = room.players.get(tile.owner) if tile.owner else None
     if not owner or owner.bankrupt or owner.id == who.id: return
-    if tile.mortgaged: return  # заложенная — без ренты
+    if tile.mortgaged: return
     rent = 0
     if tile.kind=="property":
         if tile.house_level>0:
@@ -384,7 +392,6 @@ def check_bankrupt_and_winner(room: Room):
                     t.owner = None
                     t.house_level = 0
                     t.mortgaged = False
-            # убрать из аукциона/сделки
             if room.auction.active and pid in room.auction.participants:
                 room.auction.participants = [x for x in room.auction.participants if x!=pid]
             if room.trade.active and (room.trade.proposer==pid or room.trade.target==pid):
@@ -592,7 +599,6 @@ def auction_start(room_id: str, dto: AuctionStartDTO):
     tile = room.board[p.pos]
     if tile.kind not in ("property","railroad","utility") or tile.owner:
         raise HTTPException(400, "Аукцион возможен только для свободной клетки")
-    # участники — все живые игроки
     participants = [pid for pid in room.turn_order if not room.players[pid].bankrupt]
     room.auction = Auction(active=True, tile_idx=p.pos, participants=participants,
                            bidder_idx=0, current_bid=0, current_winner=None)
@@ -600,15 +606,9 @@ def auction_start(room_id: str, dto: AuctionStartDTO):
                     ", ".join(room.players[x].name for x in participants))
     return {"ok": True, "auction": room.auction.dict()}
 
-def rotate_bidder(room: Room):
-    if not room.auction.participants:
-        return
-    room.auction.bidder_idx %= len(room.auction.participants)
-
 def advance_bidder(room: Room):
-    if not room.auction.participants:
-        return
-    room.auction.bidder_idx = (room.auction.bidder_idx + 1) % len(room.auction.participants)
+    if room.auction.participants:
+        room.auction.bidder_idx = (room.auction.bidder_idx + 1) % len(room.auction.participants)
 
 def finish_auction(room: Room):
     a = room.auction
@@ -623,23 +623,14 @@ def finish_auction(room: Room):
             room.log.append(f"Аукцион: {winner.name} купил {tile.name} за {a.current_bid}")
     else:
         room.log.append("Аукцион завершён без продажи")
-    room.auction = Auction()  # сброс
-
-def check_auction_resolve(room: Room):
-    a = room.auction
-    if not a.active: return
-    if len(a.participants) == 0:
-        room.log.append("Аукцион: нет участников")
-        room.auction = Auction()
-    elif len(a.participants) == 1 and a.current_winner == a.participants[0]:
-        finish_auction(room)
+    room.auction = Auction()
 
 @app.post("/api/rooms/{room_id}/auction/bid")
 def auction_bid(room_id: str, dto: AuctionBidDTO):
     room = ROOMS.get(room_id)
     if not room: raise HTTPException(404, "Комната не найдена")
-    if not room.auction.active: raise HTTPException(400, "Аукцион не идёт")
     a = room.auction
+    if not a.active: raise HTTPException(400, "Аукцион не идёт")
     bidder = a.participants[a.bidder_idx]
     if bidder != dto.player_id:
         raise HTTPException(400, "Сейчас ход другого участника аукциона")
@@ -653,15 +644,17 @@ def auction_bid(room_id: str, dto: AuctionBidDTO):
     a.current_winner = dto.player_id
     room.log.append(f"Ставка: {player.name} → {new_bid}")
     advance_bidder(room)
-    check_auction_resolve(room)
+    # финалим, если остался 1 участник и он же лидер
+    if len(a.participants) == 1 and a.current_winner == a.participants[0]:
+        finish_auction(room)
     return {"ok": True, "auction": a.dict()}
 
 @app.post("/api/rooms/{room_id}/auction/pass")
 def auction_pass(room_id: str, dto: AuctionPassDTO):
     room = ROOMS.get(room_id)
     if not room: raise HTTPException(404, "Комната не найдена")
-    if not room.auction.active: raise HTTPException(400, "Аукцион не идёт")
     a = room.auction
+    if not a.active: raise HTTPException(400, "Аукцион не идёт")
     bidder = a.participants[a.bidder_idx]
     if bidder != dto.player_id:
         raise HTTPException(400, "Сейчас ход другого участника аукциона")
@@ -673,7 +666,6 @@ def auction_pass(room_id: str, dto: AuctionPassDTO):
         room.log.append("Аукцион отменён — никто не участвует")
         return {"ok": True, "auction": room.auction.dict()}
     a.bidder_idx %= len(a.participants)
-    # если остался один участник и именно он — текущий победитель, финалим
     if len(a.participants) == 1 and a.current_winner == a.participants[0]:
         finish_auction(room)
         return {"ok": True, "auction": room.auction.dict()}
@@ -713,7 +705,7 @@ def trade_accept(room_id: str, dto: TradeDecisionDTO):
     buyer = room.players[tr.target]
     seller = room.players[tr.proposer]
     t = room.board[tr.tile_idx]
-    if t.owner != seller.id:  # что-то изменилось
+    if t.owner != seller.id:
         room.trade = Trade()
         raise HTTPException(400, "Сделка устарела")
     if buyer.money < tr.money:
