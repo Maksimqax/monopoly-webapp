@@ -1,32 +1,123 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Monopoly WebApp</title>
-  <link rel="stylesheet" href="./style.css"/>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Монополия — WebApp</title>
+  <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <div class="wrap">
-    <h1>Монополия — WebApp</h1>
-    <div class="bar">
-      <input id="room" placeholder="room id" />
-      <button id="btnJoin">Войти</button>
-      <button id="btnStart">Старт</button>
-      <button id="btnRoll">🎲</button>
-      <button id="btnBuy">Купить</button>
-      <button id="btnEnd">Конец хода</button>
+<div id="app">
+
+  <section id="menu">
+    <h1>Монополия — лобби</h1>
+
+    <div class="toolbar">
+      <button id="refreshRooms">Обновить</button>
+      <button id="openCreate">Создать лобби</button>
     </div>
 
-    <div id="you"></div>
-    <div id="turn"></div>
+    <div id="rooms"></div>
 
-    <div id="players" class="players"></div>
-    <div id="board" class="board"></div>
+    <details class="tip">
+      <summary>Как играть</summary>
+      Создайте лобби (название/пароль/2–5 игроков), поделитесь ID. Открытые лобби — без пароля.<br>
+      Создатель запускает игру. Строим/продаём дома равномерно по цветовой группе.<br>
+      Новое: аукционы, ипотека (заложить/выкупить), сделки «клетка ↔ деньги».
+    </details>
+  </section>
 
-    <pre id="log"></pre>
-  </div>
-  <script src="./app.js"></script>
+  <section id="lobby" class="hidden">
+    <h2 id="lobbyTitle">Лобби</h2>
+    <div id="players"></div>
+    <div class="row">
+      <button id="startBtn" class="primary">Запустить игру (создатель)</button>
+      <button id="backToMenu">Назад</button>
+    </div>
+  </section>
+
+  <section id="board" class="hidden">
+    <header class="board-header">
+      <div id="turnInfo"></div>
+      <div class="row">
+        <button id="rollBtn">🎲 Бросить</button>
+        <button id="buyBtn">Купить</button>
+        <button id="auctionBtn">Аукцион</button>
+        <button id="buildBtn">Построить</button>
+        <button id="sellBtn">Продать дом</button>
+        <button id="mortBtn">Заложить</button>
+        <button id="unmortBtn">Выкупить</button>
+        <button id="tradeBtn">Сделка</button>
+        <button id="endBtn">Конец хода</button>
+      </div>
+    </header>
+
+    <main class="board">
+      <ul id="tiles" class="tiles"></ul>
+
+      <aside class="sidebar">
+        <h3>Игроки</h3>
+        <ul id="plist"></ul>
+
+        <h3>Аукцион</h3>
+        <div id="auction" class="tip hidden">
+          <div id="aucInfo"></div>
+          <div class="row">
+            <button id="aucBid">Ставка +10</button>
+            <button id="aucPass">Пас</button>
+          </div>
+        </div>
+
+        <h3>Журнал</h3>
+        <div id="log" class="log"></div>
+      </aside>
+    </main>
+  </section>
+</div>
+
+<!-- Создать лобби -->
+<dialog id="dlgCreate">
+  <form id="createForm" method="dialog">
+    <h3>Создать лобби</h3>
+    <label>Название <input name="name" required maxlength="30" value="Комната" /></label>
+    <label>Максимум игроков
+      <select name="max_players"><option>2</option><option selected>4</option><option>5</option></select>
+    </label>
+    <label>Пароль (необязательно) <input name="password" placeholder="(без пароля — открытая)" /></label>
+    <label>Ваш ник <input name="owner_name" required maxlength="20" /></label>
+    <label>Цвет фишки <input name="owner_color" type="color" value="#1e90ff" /></label>
+    <menu><button value="cancel">Отмена</button><button value="ok" class="primary">Создать</button></menu>
+  </form>
+</dialog>
+
+<!-- Войти -->
+<dialog id="dlgJoin">
+  <form id="joinForm" method="dialog">
+    <h3>Войти в лобби</h3>
+    <p id="joinRoomInfo"></p>
+    <label>Ник <input name="name" required maxlength="20" /></label>
+    <label>Цвет фишки <input name="color" type="color" value="#ff6347" /></label>
+    <label>Пароль (если закрыто) <input name="password" /></label>
+    <menu><button value="cancel">Отмена</button><button value="ok" class="primary">Войти</button></menu>
+  </form>
+</dialog>
+
+<!-- Сделка -->
+<dialog id="dlgTrade">
+  <form id="tradeForm" method="dialog">
+    <h3>Предложить сделку</h3>
+    <p>Предложение: <b>мою текущую клетку</b> другому игроку за деньги</p>
+    <label>Игрок
+      <select name="target" id="tradeTargets"></select>
+    </label>
+    <label>Сумма ($)
+      <input name="money" type="number" min="0" step="10" value="100" />
+    </label>
+    <menu><button value="cancel">Отмена</button><button value="ok" class="primary">Предложить</button></menu>
+  </form>
+</dialog>
+
+<script>const API = location.origin;</script>
+<script src="/static/app.js"></script>
 </body>
 </html>
