@@ -1,3 +1,7 @@
+// NB: пока используем "you" как псевдоним текущего игрока.
+// Позже подставим реального пользователя из Telegram initData.
+const CURRENT = "you";
+
 const api = {
   async list() {
     const r = await fetch("/api/lobbies");
@@ -7,7 +11,7 @@ const api = {
     const r = await fetch("/api/lobbies", {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({name, password, max_players, owner: "you"})
+      body: JSON.stringify({name, password, max_players, owner: CURRENT})
     });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
@@ -16,7 +20,16 @@ const api = {
     const r = await fetch(`/api/lobbies/${id}/join`, {
       method: "POST",
       headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({who:"you", password})
+      body: JSON.stringify({who: CURRENT, password})
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  },
+  async start(id) {
+    const r = await fetch(`/api/lobbies/${id}/start`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({who: CURRENT})
     });
     if (!r.ok) throw new Error(await r.text());
     return r.json();
@@ -40,37 +53,69 @@ const els = {
   joinCancel: document.getElementById("joinCancel"),
 };
 
-async function refresh() {
-  const data = await api.list();
-  els.list.innerHTML = "";
-  data.lobbies.forEach(l => {
-    const li = document.createElement("li");
-    li.className = "lobby";
-    li.innerHTML = `
+function lobbyRow(l) {
+  // кнопки
+  let actions = "";
+
+  // Войти
+  const joinDisabled = l.players >= l.max_players ? "disabled" : "";
+  if (l.locked) {
+    actions += `<button data-id="${l.id}" class="joinLocked" ${joinDisabled}>Войти</button>`;
+  } else {
+    actions += `<button data-id="${l.id}" class="joinOpen" ${joinDisabled}>Войти</button>`;
+  }
+
+  // Запустить (если я — владелец)
+  if (l.owner === CURRENT) {
+    const canStart = l.players >= 2 && !l.started;
+    actions += `<button data-id="${l.id}" class="startBtn" ${canStart ? "" : "disabled"}>Запустить</button>`;
+  }
+
+  return `
+    <li class="lobby">
       <div class="name">${l.name} <span class="id">#${l.id}</span></div>
       <div class="meta">${l.players}/${l.max_players} · ${l.locked ? "🔒 приватное" : "открытое"}</div>
-      <div class="actions">
-        ${l.locked
-          ? `<button data-id="${l.id}" class="joinLocked">Войти</button>`
-          : `<button data-id="${l.id}" class="joinOpen">Войти</button>`}
-      </div>
-    `;
-    els.list.appendChild(li);
-  });
+      <div class="actions">${actions}</div>
+    </li>
+  `;
+}
 
-  // навесить обработчики
+async function refresh() {
+  const data = await api.list();
+  els.list.innerHTML = data.lobbies.map(lobbyRow).join("");
+
+  // JOIN открытые
   els.list.querySelectorAll(".joinOpen").forEach(btn => {
     btn.onclick = async () => {
+      if (btn.disabled) return;
       try {
         await api.join(btn.dataset.id, "");
-        alert("Вы вошли в лобби " + btn.dataset.id);
+        await refresh();
       } catch (e) {
         alert("Ошибка: " + e.message);
       }
     };
   });
+  // JOIN с паролем
   els.list.querySelectorAll(".joinLocked").forEach(btn => {
-    btn.onclick = () => openJoinDialog(btn.dataset.id);
+    btn.onclick = () => {
+      if (btn.disabled) return;
+      openJoinDialog(btn.dataset.id);
+    };
+  });
+  // START (только владелец)
+  els.list.querySelectorAll(".startBtn").forEach(btn => {
+    btn.onclick = async () => {
+      if (btn.disabled) return;
+      try {
+        const res = await api.start(btn.dataset.id);
+        alert(res.message || "Игра запущена");
+        // TODO: здесь же можем перейти на страницу поля /game?id=...
+        await refresh();
+      } catch (e) {
+        alert("Ошибка: " + e.message);
+      }
+    };
   });
 }
 
@@ -88,7 +133,7 @@ function openJoinDialog(id) {
   els.joinDlg.showModal();
 }
 
-// события
+// events
 els.createBtn.onclick = openCreateDialog;
 els.refreshBtn.onclick = refresh;
 
@@ -98,10 +143,9 @@ els.dlgOk.onclick = async () => {
     const name = els.dlgName.value.trim();
     const password = els.dlgPass.value.trim();
     const max_players = parseInt(els.dlgMax.value, 10);
-    const res = await api.create({name, password, max_players});
+    await api.create({name, password, max_players});
     els.dlg.close();
-    alert("Лобби создано: #" + res.id);
-    refresh();
+    await refresh();
   } catch (e) {
     alert("Ошибка: " + e.message);
   }
@@ -114,11 +158,11 @@ els.joinOk.onclick = async () => {
     const pass = els.joinPass.value.trim();
     await api.join(id, pass);
     els.joinDlg.close();
-    alert("Вы вошли в лобби #" + id);
+    await refresh();
   } catch (e) {
     alert("Ошибка: " + e.message);
   }
 };
 
-// первый рендер
+// init
 refresh();
