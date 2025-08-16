@@ -1,230 +1,194 @@
-/* webapp/game.js — минимальный прототип поля 40 клеток + ходы
-   - CSS grid 11x11 с пустым центром
-   - токены 5 цветов
-   - анимация перемещения по маршруту из 40 координат
-   - крючки для сети: fetch('/api/...'), SSE и пр.
+/* game.js — вертикальное поле (11x11), 40 клеток по периметру.
+   Без сервера работает локально (можно бросать и ходить).
+   С сервером — оставлены места для fetch/SSE.
 */
 
 (() => {
-  // ==== параметры / состояние игры ====
+  // ---------- helpers ----------
+  const qs =(s,root=document)=>root.querySelector(s);
+  const sleep = ms => new Promise(r=>setTimeout(r,ms));
+  const getParam = k => new URL(location.href).searchParams.get(k);
+
   const COLORS = ["red","yellow","blue","green","purple"];
-  const COLOR_CLASS = {
-    red: "t-red", yellow: "t-yellow", blue: "t-blue", green: "t-green", purple: "t-purple"
+  const COLORS_CLASS = {
+    red:"t-red", yellow:"t-yellow", blue:"t-blue", green:"t-green", purple:"t-purple"
   };
 
-  // (пример) состояние прилетает с сервера
+  // ---------- DOM ----------
+  const boardEl   = qs('#board');
+  const diceLabel = qs('#diceLabel');
+  const rollBtn   = qs('#rollBtn');
+  const endBtn    = qs('#endBtn');
+  const roomInfo  = qs('#roomInfo');
+  const turnInfo  = qs('#turnInfo');
+
+  // ---------- state (если сервер не дал — поднимем локальный режим) ----------
   const state = {
-    lobbyId: getParam("lobby") || "—",
-    me: null,                // мой playerId
-    current: 0,              // чей ход (index)
-    players: [
-      // пример двух игроков; реальные подтяни с сервера
-      // { id:"u1", name:"Host", color:"red",   pos: 0, money:1500 },
-      // { id:"u2", name:"Guest", color:"yellow", pos: 0, money:1500 },
-    ],
-    started: false
+    lobbyId: getParam('lobby') || '—',
+    me: null,                 // id игрока
+    current: 0,               // индекс, чей ход
+    players: [],              // [{id,name,color,pos,money}]
+    started: true
   };
 
-  // если из backend уже есть список игроков
-  // можно вытащить с window.__GAME__ или запросом /api/game/state?lobby=...
+  // если бэкенд положил стартовое состояние (через шаблон) — подтянем
   if (window.__GAME__) Object.assign(state, window.__GAME__);
 
-  const boardEl = document.getElementById("board");
-  const roomInfo = document.getElementById("roomInfo");
-  const turnInfo = document.getElementById("turnInfo");
-  const rollBtn = document.getElementById("rollBtn");
-  const endBtn = document.getElementById("endBtn");
-  const diceLabel = document.getElementById("diceLabel");
+  // если всё ещё пусто — локальный режим на двоих
+  if (!state.players?.length) {
+    state.players = [
+      { id: 'me',   name:'Я',    color:'red',    pos:0, money:1500 },
+      { id: 'u2',   name:'Друг', color:'yellow', pos:0, money:1500 }
+    ];
+    state.me = 'me';
+  }
+  // если сервер не сказал, кто я — пусть я буду первым
+  if (!state.me) state.me = state.players[0]?.id;
 
-  // ==== построение маршрута 40 клеток (по периметру) ====
-  // grid 11x11 => индексы клеток по периметру (начинаем с нижнего левого угла — как классическое "Старт")
-  const ringCoords = [];
-  for (let x = 0; x < 11; x++) ringCoords.push([10, x]);          // нижняя строка слева->вправо
-  for (let y = 9; y >= 0; y--) ringCoords.push([y, 10]);          // правая колонка вниз->вверх
-  for (let x = 9; x >= 0; x--) ringCoords.push([0, x]);           // верхняя строка справа->влево
-  for (let y = 1; y < 10; y++) ringCoords.push([y, 0]);           // левая колонка вверх->вниз
-  // итого 40 клеток perimetr
+  // ---------- строим периметр 40 клеток ----------
+  const ring = [];
+  for (let x=0;x<11;x++) ring.push([10,x]);     // низ слева->вправо
+  for (let y=9; y>=0; y--) ring.push([y,10]);    // право вниз->вверх
+  for (let x=9; x>=0; x--) ring.push([0,x]);     // верх право->лево
+  for (let y=1; y<10; y++) ring.push([y,0]);     // лево вверх->вниз
 
-  // ==== построим html клеток 11x11 ====
-  const cells = [];
-  for (let r = 0; r < 11; r++){
-    for (let c = 0; c < 11; c++){
-      const cell = document.createElement("div");
-      const edge = r === 0 || r === 10 || c === 0 || c === 10;
-      cell.className = "cell" + (edge ? " edge" : " center");
+  const ringIndex = (r,c)=> ring.findIndex(([rr,cc])=> rr===r && cc===c);
+  const getCell   = (idx) => {
+    idx = ((idx%40)+40)%40;
+    const [r,c] = ring[idx];
+    return boardEl.children[r*11 + c];
+  };
+
+  // ---------- отрисуем сетку 11×11 ----------
+  for (let r=0;r<11;r++){
+    for (let c=0;c<11;c++){
+      const cell = document.createElement('div');
+      const edge = r===0 || r===10 || c===0 || c===10;
+      cell.className = 'cell ' + (edge?'edge':'center');
       if (edge){
-        // индекс по периметру
-        const idx = ringIndexOf(r, c);
-        cell.dataset.idx = idx;
-        if (typeof idx === "number"){
-          const lab = document.createElement("div");
-          lab.className = "idx";
-          lab.textContent = idx;
-          cell.appendChild(lab);
+        const idx = ringIndex(r,c);
+        if (idx>=0){
+          const d=document.createElement('div');
+          d.className='idx'; d.textContent=idx;
+          cell.appendChild(d);
+          cell.dataset.idx = idx;
         }
       }
       boardEl.appendChild(cell);
-      cells.push(cell);
     }
   }
 
-  function ringIndexOf(row, col){
-    // вернуть индекс 0..39 если это край поля, иначе null
-    const found = ringCoords.findIndex(([rr,cc]) => rr===row && cc===col);
-    return found >= 0 ? found : null;
-    // (внутренним клеткам вернём null)
-  }
-
-  function getCellByIdx(idx){
-    idx = ((idx % 40) + 40) % 40;
-    const [r,c] = ringCoords[idx];
-    return boardEl.children[r*11 + c];
-  }
-
-  // ==== тулзы ====
-  function getParam(name){
-    const url = new URL(location.href);
-    return url.searchParams.get(name);
-  }
-  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
-
-  // ==== фишки ====
+  // ---------- токены ----------
   function renderTokens(){
-    // очистить токены
-    document.querySelectorAll(".token").forEach(el => el.remove());
-    // прорисовать по позициям
+    boardEl.querySelectorAll('.token').forEach(n=>n.remove());
     for (const p of state.players){
-      const cell = getCellByIdx(p.pos || 0);
-      const token = document.createElement("div");
-      token.className = `token ${COLOR_CLASS[p.color] || "t-red"}`;
-      token.dataset.pid = p.id;
-      cell.appendChild(token);
+      const el = getCell(p.pos||0);
+      const t  = document.createElement('div');
+      t.className = 'token ' + (COLORS_CLASS[p.color] || 't-red');
+      t.dataset.pid = p.id;
+      el.appendChild(t);
     }
   }
 
-  // ==== ход и бросок ====
-  function currentPlayer(){
-    return state.players[state.current % state.players.length];
-  }
-  function isMyTurn(){
-    return state.me && currentPlayer().id === state.me;
+  // ---------- ход ----------
+  const playerById   = id => state.players.find(p=>p.id===id);
+  const currentPlayer= ()=> state.players[state.current % state.players.length];
+  const isMyTurn     = ()=> currentPlayer()?.id === state.me;
+
+  async function move(player, steps){
+    for (let i=0;i<steps;i++){
+      player.pos = ((player.pos||0) + 1) % 40;
+      renderTokens();
+      await sleep(200);
+    }
   }
 
   async function onRoll(){
-    if (!isMyTurn()) return;
+    // разрешим бросать в локальном режиме даже если сервер не сказал, что мой ход
+    if (!isMyTurn() && state.players.length>1) return;
+
     rollBtn.disabled = true;
+
+    // серверный вариант:
+    // const r = await fetch(`/api/game/roll?lobby=${state.lobbyId}`, {method:'POST'});
+    // const {d1,d2} = await r.json();
 
     const d1 = 1 + Math.floor(Math.random()*6);
     const d2 = 1 + Math.floor(Math.random()*6);
-    const steps = d1 + d2;
-    diceLabel.textContent = `Выпало: ${d1} и ${d2} (сумма ${steps})`;
+    diceLabel.textContent = `Выпало: ${d1} и ${d2} (сумма ${d1+d2})`;
 
-    await moveToken(currentPlayer(), steps);
+    await move(currentPlayer(), d1+d2);
 
-    // TODO: здесь можно вызвать серверную обработку клетки
-    // await fetch(`/api/game/land?lobby=${state.lobbyId}`, {method:"POST", body: JSON.stringify({player: state.me})})
+    // здесь можно дернуть обработку клетки на сервере
+    // await fetch(`/api/game/land?lobby=${state.lobbyId}`, {method:'POST', body: JSON.stringify({player: state.me})});
 
     endBtn.disabled = false;
   }
 
-  async function moveToken(player, steps){
-    // аккуратная анимация по шагам
-    for (let i=0;i<steps;i++){
-      player.pos = ((player.pos||0) + 1) % 40;
-      renderTokens();
-      await sleep(220);
-    }
-  }
-
-  function endTurn(){
-    if (!isMyTurn()) return;
+  function onEndTurn(){
+    if (!isMyTurn() && state.players.length>1) return;
     endBtn.disabled = true;
     state.current = (state.current + 1) % state.players.length;
+
+    // сервер: сообщить о смене хода
+    // fetch(`/api/game/turn?lobby=${state.lobbyId}`, {method:'POST', body: JSON.stringify({current: state.current})});
+
     updateTurnUI();
     rollBtn.disabled = !isMyTurn();
-
-    // TODO: синхронизация хода
-    // fetch(`/api/game/turn?lobby=${state.lobbyId}`, {method:"POST", body: JSON.stringify({current: state.current})})
   }
 
   function updateTurnUI(){
-    const p = currentPlayer();
-    turnInfo.textContent = `Ходит: ${p?.name ?? "—"}`;
-  }
-
-  // ==== старт: получить состав игроков ====
-  async function bootstrap(){
-    // 1) загрузим состояние (если не передали в window.__GAME__)
-    if (!state.players?.length){
-      try{
-        const resp = await fetch(`/api/game/state?lobby=${encodeURIComponent(state.lobbyId)}`);
-        if (resp.ok){
-          const data = await resp.json();
-          Object.assign(state, data);
-        }else{
-          // на крайний случай — мок на 2 игроков
-          state.players = [
-            { id:"me",   name:"Я",    color:"red",    pos:0, money:1500 },
-            { id:"u-2",  name:"Друг", color:"yellow", pos:0, money:1500 },
-          ];
-          state.me = "me";
-        }
-      }catch(e){
-        // мок если offline
-        state.players = [
-          { id:"me",   name:"Я",    color:"red",    pos:0, money:1500 },
-          { id:"u-2",  name:"Друг", color:"yellow", pos:0, money:1500 },
-        ];
-        state.me = "me";
-      }
-    }
-
-    // 2) UI
     roomInfo.textContent = `Комната #${state.lobbyId}`;
-    renderTokens();
-    updateTurnUI();
-    rollBtn.disabled = !isMyTurn();
-    endBtn.disabled = true;
-
-    // 3) если есть серверные события — подключись
-    setupSSE();
+    const p = currentPlayer();
+    turnInfo.textContent = `Ходит: ${p?.name ?? '—'}`;
   }
 
+  // ---------- SSE (если сделано на бэкенде) ----------
   function setupSSE(){
-    // слушаем старт/ходы/позиции с сервера (если реализовано)
     try{
       const es = new EventSource(`/events/${encodeURIComponent(state.lobbyId)}`);
-      es.onmessage = (e)=>{
-        const msg = JSON.parse(e.data || "{}");
+      es.onmessage = e => {
+        const msg = JSON.parse(e.data||'{}');
         switch(msg.type){
-          case "state":
-            Object.assign(state, msg.payload || {});
+          case 'state':
+            Object.assign(state, msg.payload||{});
             renderTokens(); updateTurnUI();
+            rollBtn.disabled = !isMyTurn();
+            endBtn.disabled  = true;
             break;
-          case "move":
-            {
-              const pl = state.players.find(p => p.id === msg.player);
-              if (pl){ pl.pos = msg.pos; renderTokens(); }
-            }
+          case 'move': {
+            const p = playerById(msg.player);
+            if (p){ p.pos = msg.pos; renderTokens(); }
             break;
-          case "turn":
+          }
+          case 'turn':
             state.current = msg.current ?? state.current;
             updateTurnUI();
             rollBtn.disabled = !isMyTurn();
-            endBtn.disabled = true;
+            endBtn.disabled  = true;
             break;
-          case "started":
-            // если кто-то нажал «Старт», всех перекидывает в игру —
-            // мы уже в игре, можно обновить state.players из бэкенда при желании
+          case 'started':
+            // при старте из лобби — сюда уже пришли; оставляем на случай повторного входа
             break;
         }
       };
-    }catch(_){}
+    }catch(e){}
   }
 
-  // ==== bind UI ====
-  rollBtn.addEventListener("click", onRoll);
-  endBtn.addEventListener("click", endTurn);
+  // ---------- старт ----------
+  function bootstrap(){
+    renderTokens();
+    updateTurnUI();
+    // локальный режим: ходить можно сразу
+    rollBtn.disabled = false;
+    endBtn.disabled  = true;
+
+    setupSSE();
+  }
+
+  // ---------- bind ----------
+  rollBtn.addEventListener('click', onRoll);
+  endBtn.addEventListener('click', onEndTurn);
 
   bootstrap();
 })();
