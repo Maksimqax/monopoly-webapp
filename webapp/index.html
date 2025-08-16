@@ -4,67 +4,53 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Монополия — лобби</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-  <header class="topbar">
+  <header>
     <h1>Монополия — лобби</h1>
-    <div class="actions">
-      <button id="btnRefresh" class="btn">Обновить</button>
-      <button id="btnCreate" class="btn btn-primary">Создать лобби</button>
+    <div class="controls">
+      <button id="refreshBtn">Обновить</button>
+      <button id="createBtn">Создать лобби</button>
     </div>
   </header>
 
-  <details class="help">
+  <details class="howto" open>
     <summary>Как играть</summary>
-    <p>Создайте лобби (название/пароль/2–5 игроков), поделитесь ID. Открытые лобби — без пароля.</p>
-    <p>Создатель запускает игру. Строим/продаём дома равномерно по цветовой группе.</p>
-    <p>Новое: аукционы, ипотека (заложить/выкупить), сделки «клетка ↔ деньги».</p>
+    <p>Создайте лобби (название/пароль/2–5 игроков), поделитесь ID.
+       Открытые лобби — без пароля. Создатель запускает игру.</p>
   </details>
 
-  <section id="lobbies" class="lobbies">
-    <!-- сюда рендерится список лобби -->
+  <section>
+    <ul id="lobbiesList" class="lobbies"></ul>
   </section>
 
-  <!-- Модалка создания лобби (HTML <dialog>, с fallback на prompt) -->
-  <dialog id="createDlg">
-    <form method="dialog" class="dlg">
-      <h3>Создать лобби</h3>
-
-      <label>Название
-        <input id="inName" type="text" placeholder="Моя комната" maxlength="40" required />
-      </label>
-
-      <label>Пароль (необязательно)
-        <input id="inPwd" type="text" placeholder="(оставьте пустым для открытого)" maxlength="32" />
-      </label>
-
-      <label>Кол-во игроков
-        <select id="inPlayers">
-          <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4" selected>4</option>
-          <option value="5">5</option>
-        </select>
-      </label>
-
-      <label>Цвет фишки
-        <select id="inColor">
-          <option value="red" selected>Красный</option>
-          <option value="blue">Синий</option>
-          <option value="green">Зелёный</option>
-          <option value="yellow">Жёлтый</option>
-          <option value="purple">Фиолетовый</option>
-        </select>
-      </label>
-
-      <menu>
-        <button value="cancel" class="btn">Отмена</button>
-        <button id="btnCreateGo" value="default" class="btn btn-primary">Создать</button>
-      </menu>
-    </form>
+  <!-- модалка создания -->
+  <dialog id="createDialog">
+    <h3>Новое лобби</h3>
+    <label>Название <input id="dlgName" /></label>
+    <label>Пароль <input id="dlgPass" placeholder="необязательно"/></label>
+    <label>Игроков
+      <select id="dlgMax">
+        <option>2</option><option>3</option><option>4</option><option>5</option>
+      </select>
+    </label>
+    <menu>
+      <button id="dlgCancel">Отмена</button>
+      <button id="dlgOk">Создать</button>
+    </menu>
   </dialog>
 
-  <script src="app.js"></script>
+  <!-- модалка пароля -->
+  <dialog id="joinDialog">
+    <div id="joinTitle"></div>
+    <label>Пароль <input id="joinPass"/></label>
+    <menu>
+      <button id="joinCancel">Отмена</button>
+      <button id="joinOk">Войти</button>
+    </menu>
+  </dialog>
+
+  <script src="/static/app.js"></script>
 </body>
 </html>
