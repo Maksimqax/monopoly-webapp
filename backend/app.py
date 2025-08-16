@@ -15,7 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ==== STATIC ====
+# ==== STATIC =====
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "webapp")
 if not os.path.isdir(STATIC_DIR):
     raise RuntimeError(f"Static dir not found: {STATIC_DIR}")
@@ -24,22 +24,29 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    with open(index_path, "r", encoding="utf-8") as f:
+    with open(os.path.join(STATIC_DIR, "index.html"), "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
 
 
-# ==== SIMPLE IN-MEMORY STORAGE ====
-# В проде это надо вынести в БД/Redis.
+# ===== IN-MEMORY STORE (в проде заменить на БД/Redis) =====
 lobbies: dict[str, dict] = {}
 
-# доступные цвета фишек
 ALLOWED_COLORS = ["red", "blue", "green", "yellow", "purple", "orange"]
 
 
 def _validate_color(color: str):
     if color not in ALLOWED_COLORS:
         raise HTTPException(400, "Недопустимый цвет")
+
+
+def _user_in_active_lobby(user: str) -> str | None:
+    """Вернёт id активного лобби, где участвует user (владелец или участник)."""
+    for lid, lb in lobbies.items():
+        if lb.get("started"):
+            continue
+        if user == lb["owner"] or user in lb["members"]:
+            return lid
+    return None
 
 
 @app.get("/api/lobbies")
@@ -54,7 +61,8 @@ async def get_lobbies():
                 "locked": bool(lb.get("password")),
                 "owner": lb["owner"],
                 "started": lb.get("started", False),
-                "taken_colors": lb["taken_colors"],  # {user: color}
+                "taken_colors": lb["taken_colors"],   # user -> color
+                "members": lb["members"],             # список участников
             }
             for lid, lb in lobbies.items()
         ]
@@ -76,10 +84,10 @@ async def create_lobby(req: Request):
         raise HTTPException(400, "Количество игроков — от 2 до 5")
     _validate_color(color)
 
-    # уже есть активное лобби этого владельца?
-    for lb in lobbies.values():
-        if lb["owner"] == owner and not lb.get("started", False):
-            raise HTTPException(400, "У вас уже есть активное лобби")
+    # Запрет создавать, если уже где-то состоим
+    lid = _user_in_active_lobby(owner)
+    if lid:
+        raise HTTPException(400, "Вы уже состоите в активном лобби")
 
     lobby_id = uuid.uuid4().hex[:6].upper()
     lobbies[lobby_id] = {
@@ -87,10 +95,10 @@ async def create_lobby(req: Request):
         "max_players": max_players,
         "password": password or None,
         "owner": owner,
-        "players": 1,                 # создатель внутри
+        "players": 1,
         "members": [owner],
-        "taken_colors": {owner: color},  # занятые цвета: user -> color
-        "used_colors": {color},          # set занятых цветов
+        "taken_colors": {owner: color},
+        "used_colors": {color},
         "started": False,
     }
     return {"ok": True, "id": lobby_id}
@@ -107,23 +115,25 @@ async def join_lobby(lobby_id: str, req: Request):
     color = (data.get("color") or "").strip()
     _validate_color(color)
 
+    # запрет вступать в несколько активных лобби
+    lid = _user_in_active_lobby(who)
+    if lid and lid != lobby_id:
+        raise HTTPException(400, "Вы уже состоите в другом активном лобби")
+
     lb = lobbies[lobby_id]
 
     if lb.get("password") and lb["password"] != password:
         raise HTTPException(403, "Неверный пароль")
 
-    # если уже в лобби — просто возвращаем инфо (но нельзя сменить цвет задним числом)
     if who in lb["members"]:
+        # уже внутри — просто вернуть информацию
         return {
             "ok": True,
             "lobby": {
-                "id": lobby_id,
-                "name": lb["name"],
-                "players": lb["players"],
-                "max_players": lb["max_players"],
-                "owner": lb["owner"],
-                "started": lb["started"],
-                "taken_colors": lb["taken_colors"],
+                "id": lobby_id, "name": lb["name"], "players": lb["players"],
+                "max_players": lb["max_players"], "owner": lb["owner"],
+                "started": lb["started"], "taken_colors": lb["taken_colors"],
+                "members": lb["members"],
             },
         }
 
@@ -140,15 +150,43 @@ async def join_lobby(lobby_id: str, req: Request):
     return {
         "ok": True,
         "lobby": {
-            "id": lobby_id,
-            "name": lb["name"],
-            "players": lb["players"],
-            "max_players": lb["max_players"],
-            "owner": lb["owner"],
-            "started": lb["started"],
-            "taken_colors": lb["taken_colors"],
+            "id": lobby_id, "name": lb["name"], "players": lb["players"],
+            "max_players": lb["max_players"], "owner": lb["owner"],
+            "started": lb["started"], "taken_colors": lb["taken_colors"],
+            "members": lb["members"],
         },
     }
+
+
+@app.post("/api/lobbies/{lobby_id}/leave")
+async def leave_lobby(lobby_id: str, req: Request):
+    if lobby_id not in lobbies:
+        raise HTTPException(404, "Лобби не найдено")
+
+    data = await req.json()
+    who = (data.get("who") or "you").strip()
+    lb = lobbies[lobby_id]
+
+    if who not in lb["members"]:
+        raise HTTPException(400, "Вы не состоите в этом лобби")
+
+    # удалить участника
+    lb["members"].remove(who)
+    lb["players"] -= 1
+    color = lb["taken_colors"].pop(who, None)
+    if color and color in lb["used_colors"]:
+        lb["used_colors"].discard(color)
+
+    # если никого не осталось — удалить лобби
+    if lb["players"] <= 0:
+        del lobbies[lobby_id]
+        return {"ok": True, "deleted": True}
+
+    # если ушёл владелец — передать права первому оставшемуся
+    if who == lb["owner"]:
+        lb["owner"] = lb["members"][0]
+
+    return {"ok": True, "lobby": {"id": lobby_id, "owner": lb["owner"], "players": lb["players"]}}
 
 
 @app.post("/api/lobbies/{lobby_id}/start")

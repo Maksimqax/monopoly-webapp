@@ -10,6 +10,7 @@
   <header>
     <h1>Монополия — лобби</h1>
     <div class="controls">
+      <input id="search" placeholder="Поиск по названию…" />
       <button id="refreshBtn">Обновить</button>
       <button id="createBtn">Создать лобби</button>
     </div>
@@ -54,7 +55,7 @@
     </menu>
   </dialog>
 
-  <!-- Вход в приватное лобби -->
+  <!-- Пароль + цвет (для приватного входа) -->
   <dialog id="joinDialog">
     <div id="joinTitle"></div>
     <label>Пароль <input id="joinPass"/></label>
@@ -74,7 +75,7 @@
     </menu>
   </dialog>
 
-  <!-- Вход в открытое лобби (чтобы выбрать цвет) -->
+  <!-- Цвет (для открытого входа) -->
   <dialog id="joinOpenDialog">
     <div id="joinOpenTitle"></div>
     <label>Ваш цвет
