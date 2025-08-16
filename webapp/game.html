@@ -1,17 +1,135 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <title>Монополия — Игровое поле</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <meta charset="utf-8" />
+  <meta
+    name="viewport"
+    content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"
+  />
+  <title>Монополия — игра</title>
+  <style>
+    :root{
+      --bg:#0f1720;
+      --panel:#121c26;
+      --text:#e5edf5;
+      --muted:#95a3b0;
+      --accent:#39c3ff;
+      --good:#36d399;
+      --bad:#ff6b6b;
+      --cell:#172431;
+      --cell2:#1a2a39;
+      --board-gap:6px;
+      --token-size: clamp(14px, 2.2vw, 22px);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;background:var(--bg);color:var(--text);margin:0}
+    body{font-family: system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif}
+    .screen{
+      height:100svh; /* safe mobile height */
+      display:flex; flex-direction:column; gap:8px;
+      overflow:hidden; padding:10px;
+    }
+    header{
+      display:flex; align-items:center; justify-content:space-between;
+      gap:10px; padding:6px 10px; background:var(--panel); border-radius:12px;
+    }
+    header .title{font-weight:700}
+    header .room{color:var(--muted); font-size:12px}
+    .wrap{
+      flex:1; min-height:0; display:grid; grid-template-rows: 1fr auto;
+      gap:8px;
+    }
+
+    /* --- BOARD --- */
+    .board-wrap{
+      display:grid; place-items:center;
+      background:var(--panel); border-radius:16px; padding:10px;
+      min-height:0; overflow:hidden;
+    }
+    /* делаем квадрат внутри и вписываем его в высоту */
+    .board{
+      aspect-ratio:1/1;
+      width: min(92vw, calc(100svh - 170px)); /* влезть в экран без скролла */
+      max-width: 92vw;
+      background:linear-gradient(180deg,var(--cell2),var(--cell));
+      border-radius:12px;
+      display:grid;
+      grid-template-columns: repeat(11, 1fr);
+      grid-template-rows: repeat(11, 1fr);
+      gap: var(--board-gap);
+      padding: var(--board-gap);
+      position:relative;
+    }
+    .cell{
+      background:#0f1a23;
+      border-radius:8px;
+      display:flex; align-items:center; justify-content:center;
+      font-size: clamp(9px,1.8vw,13px);
+      color:#8da0b1;
+      position:relative; overflow:hidden;
+    }
+    .cell.edge{background:#102131}
+    .cell.center{background:transparent; outline:2px dashed #1f3243; outline-offset:-6px}
+    .cell .idx{
+      position:absolute; bottom:4px; right:6px;
+      font-size: 10px; color:#667787;
+      opacity:.8; user-select:none;
+    }
+
+    /* токены игроков */
+    .token{
+      width: var(--token-size);
+      height: var(--token-size);
+      border-radius:50%;
+      outline:2px solid rgba(255,255,255,.18);
+      box-shadow:0 2px 6px rgba(0,0,0,.35);
+    }
+    .t-red{background:#ff4d4f}
+    .t-yellow{background:#ffd34d}
+    .t-blue{background:#4da6ff}
+    .t-green{background:#35d49b}
+    .t-purple{background:#b174ff}
+
+    /* панель управления */
+    .panel{
+      background:var(--panel); border-radius:16px; padding:10px;
+      display:grid; grid-template-columns: 1fr auto; align-items:center; gap:10px;
+    }
+    .dice-res{font-size:14px; color:var(--muted)}
+    .buttons{display:flex; gap:8px}
+    button{
+      appearance:none; border:0; border-radius:12px; padding:10px 14px;
+      background:#163043; color:#eaf4ff; font-weight:600;
+    }
+    button.primary{background:var(--accent); color:#002233}
+    button:disabled{opacity:.5}
+  </style>
 </head>
 <body>
-  <h1>Монополия — Игровое поле</h1>
-  <canvas id="board" width="800" height="1200"></canvas>
-  <div>
-    <button onclick="rollDice()">Бросить кубик</button>
-    <p id="diceResult"></p>
+<div class="screen">
+  <header>
+    <div>
+      <div class="title">Монополия — ход</div>
+      <div class="room" id="roomInfo">Комната —</div>
+    </div>
+    <div id="turnInfo" class="room">Ходит: —</div>
+  </header>
+
+  <div class="wrap">
+    <div class="board-wrap">
+      <div id="board" class="board"></div>
+    </div>
+
+    <div class="panel">
+      <div class="dice-res" id="diceLabel">Брось кубики</div>
+      <div class="buttons">
+        <button id="rollBtn" class="primary">Бросить кубики</button>
+        <button id="endBtn">Закончить ход</button>
+      </div>
+    </div>
   </div>
-  <script src="/static/game.js"></script>
+</div>
+
+<script src="./game.js" defer></script>
 </body>
 </html>
