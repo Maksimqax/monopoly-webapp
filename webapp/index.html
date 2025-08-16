@@ -13,11 +13,24 @@
     .row { display: flex; gap: 8px; flex-wrap: wrap; }
     input, select, button { background:#111b26; color:#e5eef9; border:1px solid #2b3b4c; padding:10px 12px; border-radius:10px; }
     button.primary { background:#1e88e5; border-color:#1e88e5; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
     .card { background:#0e1a24; border:1px solid #223244; border-radius:12px; padding:12px; margin:10px 0; }
     .lobby-line { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-    .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
+    .left { display:flex; align-items:center; gap:10px; overflow:hidden; }
+    .title { font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:260px; }
     .muted { color:#a5b5c5; font-size:13px; }
+    .pill { padding:2px 8px; border-radius:999px; background:#162330; border:1px solid #26384b; font-size:12px; }
+    .dot { width:10px; height:10px; border-radius:50%; display:inline-block; margin-left:6px; }
+    .dot.red{background:#e74c3c}.dot.blue{background:#3498db}.dot.green{background:#2ecc71}.dot.yellow{background:#f1c40f}.dot.purple{background:#9b59b6}
     .hidden { display:none; }
+
+    /* Модалки */
+    .modal {
+      position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+      background: rgba(8,12,16,.55); z-index: 100;
+    }
+    .modal > .card { width: min(600px, 96vw); }
+    .right { display:flex; align-items:center; gap:8px; }
   </style>
 </head>
 <body>
@@ -38,35 +51,55 @@
   <div id="list"></div>
 </div>
 
-<!-- Диалог создания -->
-<div id="dlgCreate" class="card hidden" style="position:fixed; inset:0; margin:auto; max-width:600px; height:max-content; z-index:10;">
-  <h3>Создать лобби</h3>
-  <div class="row">
-    <input id="c_name" placeholder="Название" style="flex:1">
-    <select id="c_max">
-      <option value="2">2 игрока</option>
-      <option value="3">3 игрока</option>
-      <option value="4">4 игрока</option>
-      <option value="5">5 игроков</option>
-    </select>
+<!-- Диалог: СОЗДАТЬ ЛОББИ -->
+<div id="dlgCreate" class="modal hidden">
+  <div class="card">
+    <h3 style="margin-top:0">Создать лобби</h3>
+    <div class="row">
+      <input id="c_name" placeholder="Название" style="flex:1">
+      <select id="c_max">
+        <option value="2">2 игрока</option>
+        <option value="3">3 игрока</option>
+        <option value="4">4 игрока</option>
+        <option value="5">5 игроков</option>
+      </select>
+    </div>
+    <div class="row">
+      <label><input type="checkbox" id="c_private"> приватное</label>
+      <input id="c_password" placeholder="Пароль (если приватное)" style="flex:1">
+    </div>
+    <div class="row">
+      <input id="c_player" placeholder="Ваше имя" style="flex:1">
+      <select id="c_color">
+        <option value="red">Красный</option>
+        <option value="blue">Синий</option>
+        <option value="green">Зелёный</option>
+        <option value="yellow">Жёлтый</option>
+        <option value="purple">Фиолетовый</option>
+      </select>
+    </div>
+    <div class="row" style="justify-content:flex-end;">
+      <button id="c_cancel">Отмена</button>
+      <button id="c_ok" class="primary">Создать</button>
+    </div>
   </div>
-  <div class="row">
-    <label><input type="checkbox" id="c_private"> приватное</label>
-    <input id="c_password" placeholder="Пароль (если приватное)" style="flex:1">
-  </div>
-  <div class="row">
-    <input id="c_player" placeholder="Ваше имя" style="flex:1">
-    <select id="c_color">
-      <option value="red">Красный</option>
-      <option value="blue">Синий</option>
-      <option value="green">Зелёный</option>
-      <option value="yellow">Жёлтый</option>
-      <option value="purple">Фиолетовый</option>
-    </select>
-  </div>
-  <div class="row" style="justify-content:flex-end;">
-    <button id="c_cancel">Отмена</button>
-    <button id="c_ok" class="primary">Создать</button>
+</div>
+
+<!-- Диалог: ВОЙТИ В ЛОББИ (с выбором цвета) -->
+<div id="dlgJoin" class="modal hidden">
+  <div class="card">
+    <h3 style="margin-top:0">Войти в лобби <span id="j_name" class="muted"></span></h3>
+    <div class="row">
+      <input id="j_player" placeholder="Ваше имя" style="flex:1">
+      <select id="j_color"></select>
+    </div>
+    <div class="row" id="j_pass_row" class="hidden">
+      <input id="j_password" placeholder="Пароль" style="flex:1">
+    </div>
+    <div class="row" style="justify-content:flex-end;">
+      <button id="j_cancel">Отмена</button>
+      <button id="j_ok" class="primary">Войти</button>
+    </div>
   </div>
 </div>
 

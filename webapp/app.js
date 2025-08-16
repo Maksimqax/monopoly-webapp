@@ -1,199 +1,211 @@
-// ======= УТИЛИТЫ =======
-function uid() {
-  if (!localStorage.uid) {
-    localStorage.uid = "u_" + Math.random().toString(36).slice(2);
-  }
-  return localStorage.uid;
-}
-function playerName() {
-  if (!localStorage.playerName) localStorage.playerName = "Игрок";
-  return localStorage.playerName;
-}
-function fetchJSON(url, opts={}) {
-  opts.headers = Object.assign({}, opts.headers || {}, {
-    "X-UID": uid(),
-    "Content-Type": "application/json",
-  });
-  return fetch(url, opts).then(r => {
-    if (!r.ok) return r.text().then(t => { throw new Error(t || r.statusText); });
-    return r.json();
-  });
-}
-
-// ======= UI =======
-const $list = document.getElementById("list");
-const $search = document.getElementById("search");
-const $dlgCreate = document.getElementById("dlgCreate");
-
-document.getElementById("btnRefresh").onclick = refresh;
-document.getElementById("btnCreate").onclick = () => $dlgCreate.classList.remove("hidden");
-
-// диалог создания
-document.getElementById("c_cancel").onclick = () => $dlgCreate.classList.add("hidden");
-document.getElementById("c_ok").onclick = async () => {
-  const body = {
-    name: document.getElementById("c_name").value.trim() || "Лобби",
-    max_players: +document.getElementById("c_max").value,
-    private: document.getElementById("c_private").checked,
-    password: document.getElementById("c_password").value || null,
-    color: document.getElementById("c_color").value,
-    player_name: document.getElementById("c_player").value.trim() || playerName(),
-  };
-  localStorage.playerName = body.player_name;
-  try {
-    const res = await fetchJSON("/api/lobby/create", {method: "POST", body: JSON.stringify(body)});
-    $dlgCreate.classList.add("hidden");
-    // подписываемся и ждём старта
-    waitAndAutoOpen(res.lobby.id);
-    refresh();
-  } catch(e) { alert(e.message); }
+// ------- базовые утилиты -------
+const API = {
+  get: (url) => fetch(url, {headers: hdr()}).then(js),
+  post: (url, data) =>
+    fetch(url, {
+      method: "POST",
+      headers: {...hdr(), "Content-Type": "application/json"},
+      body: JSON.stringify(data || {})
+    }).then(js)
 };
 
-$search.oninput = refresh;
-
-async function refresh() {
-  try {
-    const data = await fetchJSON("/api/lobbies");
-    renderList(data.items.filter(it => it.name.toLowerCase().includes($search.value.toLowerCase())));
-  } catch(e) { console.error(e); }
+function js(r) { if (!r.ok) return r.json().then(e=>{throw e}); return r.json(); }
+function uuid() {
+  let u = localStorage.getItem("uid");
+  if (!u) { u = crypto.randomUUID?.() || (Date.now()+"-"+Math.random()); localStorage.setItem("uid", u); }
+  return u;
 }
+function hdr(){ return {"X-UID": uuid()}; }
+function el(id){ return document.getElementById(id); }
+function q(sel, root=document){ return root.querySelector(sel); }
+function ce(tag, props={}){ const n = document.createElement(tag); Object.assign(n, props); return n; }
 
-function renderList(items) {
+const COLORS = ["red","blue","green","yellow","purple"];
+const COLOR_NAMES = { red:"Красный", blue:"Синий", green:"Зелёный", yellow:"Жёлтый", purple:"Фиолетовый" };
+
+let lastName = localStorage.getItem("player_name") || "";
+let activeSub = null;   // EventSource подписка на текущее лобби (если мы в нём)
+
+// ------- отрисовка списка -------
+const $list = el("list");
+const $search = el("search");
+
+el("btnRefresh").onclick = load;
+el("btnCreate").onclick = () => showCreate(true);
+
+function showCreate(open){
+  el("c_player").value = lastName;
+  el("dlgCreate").classList.toggle("hidden", !open);
+}
+el("c_cancel").onclick = () => showCreate(false);
+
+el("c_ok").onclick = async () => {
+  try{
+    lastName = el("c_player").value.trim() || "Игрок";
+    localStorage.setItem("player_name", lastName);
+    const body = {
+      name: el("c_name").value.trim() || "Лобби",
+      max_players: +el("c_max").value,
+      private: el("c_private").checked,
+      password: el("c_password").value || null,
+      color: el("c_color").value,
+      player_name: lastName
+    };
+    const r = await API.post("/api/lobby/create", body);
+    showCreate(false);
+    await load(); // обновим список
+    subscribeIfMember(r.lobby); // сразу подписка для автоперехода при старте
+  }catch(e){ alert(e.detail || "Ошибка создания"); }
+};
+
+// join-dialog
+const $dlgJoin = el("dlgJoin");
+const $jName = el("j_name");
+const $jPlayer = el("j_player");
+const $jColor = el("j_color");
+const $jPassRow = el("j_pass_row");
+const $jPassword = el("j_password");
+
+let joinLobbyId = null;
+el("j_cancel").onclick = () => ($dlgJoin.classList.add("hidden"), joinLobbyId=null);
+el("j_ok").onclick = async ()=>{
+  if (!joinLobbyId) return;
+  try{
+    lastName = $jPlayer.value.trim() || "Игрок";
+    localStorage.setItem("player_name", lastName);
+    const body = {
+      lobby: joinLobbyId,
+      password: $jPassRow.classList.contains("hidden") ? null : ($jPassword.value || null),
+      color: $jColor.value,
+      player_name: lastName
+    };
+    const r = await API.post("/api/lobby/join", body);
+    $dlgJoin.classList.add("hidden");
+    joinLobbyId = null;
+    await load();
+    subscribeIfMember(r.lobby);
+  }catch(e){ alert(e.detail || "Не удалось войти"); }
+};
+
+async function load(){
+  const data = await API.get("/api/lobbies");
+  const term = $search.value.trim().toLowerCase();
+
   $list.innerHTML = "";
-  items.forEach(item => {
-    const div = document.createElement("div");
-    div.className = "card lobby-line";
+  for (const l of data.items){
+    if (term && !l.name.toLowerCase().includes(term)) continue;
 
-    let colors = "";
-    for (const p of item.players) {
-      colors += `<span class="dot" style="background:${p.color}"></span>`;
+    const taken = l.players.map(p=>p.color);
+    const me = l.players.find(p=>p.uid === uuid());
+    const owner = l.players.find(p=>p.owner);
+
+    const line = ce("div", {className:"card lobby-line"});
+    const left = ce("div", {className:"left"});
+    left.append(
+      ce("div", {className:"title", innerText: l.name}),
+      ce("div", {className:"muted", innerText: `#${l.id}`}),
+      ce("div", {className:"pill", innerText: `${l.players_count}/${l.max_players}`}),
+      ce("div", {className:"pill", innerText: l.private ? "приватное" : "открытое"})
+    );
+    // точки цветов
+    for (const c of taken){
+      left.append(ce("span", {className:`dot ${c}`}));
+    }
+    line.append(left);
+
+    const right = ce("div", {className:"right"});
+    const btnJoin = ce("button", {innerText:"Войти"});
+    btnJoin.disabled = l.started || (l.players_count >= l.max_players);
+    btnJoin.onclick = () => openJoinDialog(l);
+    right.append(btnJoin);
+
+    // если я уже в лобби — покажем "Покинуть"
+    if (me){
+      const leave = ce("button", {innerText:"Покинуть"});
+      leave.onclick = async ()=>{
+        await API.post("/api/lobby/leave", {lobby: l.id});
+        await load();
+      };
+      right.append(leave);
+
+      // если я владелец — "Запустить"
+      if (me.owner){
+        const start = ce("button", {innerText:"Запустить", className:"primary"});
+        start.onclick = async ()=>{
+          try{
+            await API.post("/api/lobby/start", {lobby: l.id});
+            // владелец уходит сразу
+            window.location.href = `/game.html?lobby=${encodeURIComponent(l.id)}`;
+          }catch(e){ alert(e.detail || "Не удалось запустить"); }
+        };
+        // активируем только при >=2 игроков
+        start.disabled = (l.players_count < 2);
+        right.append(start);
+      }
+
+      // подписка на SSE — чтобы улететь на игру при старте
+      subscribeIfMember(l);
     }
 
-    div.innerHTML = `
-      <div style="flex:1 1 auto">
-        <div><b>${escapeHtml(item.name)}</b>  <span class="muted">#${item.id}</span></div>
-        <div class="muted">${item.players_count}/${item.max_players} · ${item.private ? "приватное" : "открытое"} · ${colors}</div>
-      </div>
-      <div class="row">
-        <button class="btnJoin">Войти</button>
-        <button class="btnLeave hidden">Покинуть</button>
-        <button class="btnStart hidden primary">Старт</button>
-      </div>
-    `;
-
-    const isMe = inLobby(item.id);
-    const amOwner = isMe && whoAmI(item.id)?.owner;
-
-    const btnJoin = div.querySelector(".btnJoin");
-    const btnLeave = div.querySelector(".btnLeave");
-    const btnStart = div.querySelector(".btnStart");
-
-    btnJoin.onclick = () => joinDialog(item);
-    btnLeave.onclick = () => leaveLobby(item.id);
-    btnStart.onclick = () => startLobby(item.id);
-
-    // Показываем/скрываем кнопки
-    btnJoin.classList.toggle("hidden", isMe);
-    btnLeave.classList.toggle("hidden", !isMe);
-    btnStart.classList.toggle("hidden", !amOwner);
-
-    $list.appendChild(div);
-  });
+    line.append(right);
+    $list.append(line);
+  }
 }
 
-function escapeHtml(s){return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+function openJoinDialog(lobby){
+  joinLobbyId = lobby.id;
+  $jName.textContent = lobby.name ? `«${lobby.name}»` : `#${lobby.id}`;
+  $jPlayer.value = lastName;
 
-// локальная «память» о том, где мы состоим
-function inLobby(id) {
-  const you = localStorage["lobby_you_" + id];
-  return !!you;
-}
-function whoAmI(id) {
-  const s = localStorage["lobby_you_" + id];
-  try { return JSON.parse(s || "null"); } catch { return null; }
-}
+  // Список доступных цветов
+  const taken = lobby.players.map(p=>p.color);
+  const free = COLORS.filter(c => !taken.includes(c));
+  $jColor.innerHTML = "";
+  for (const c of free){
+    const opt = ce("option", {value:c, innerText: COLOR_NAMES[c]});
+    $jColor.append(opt);
+  }
+  if (!$jColor.value && free.length) $jColor.value = free[0];
 
-// ======= JOIN / LEAVE / START  =======
-async function joinDialog(item) {
-  if (item.private) {
-    const pwd = prompt("Пароль для входа?");
-    if (pwd === null) return;
-    await joinLobby(item.id, pwd);
+  // пароль только если приватное
+  if (lobby.private){
+    $jPassRow.classList.remove("hidden");
   } else {
-    await joinLobby(item.id, null);
+    $jPassRow.classList.add("hidden");
+    $jPassword.value = "";
   }
-}
-async function joinLobby(lobbyId, password) {
-  // нельзя одновременно находиться в нескольких лобби
-  for (const k of Object.keys(localStorage)) {
-    if (k.startsWith("lobby_you_")) {
-      alert("Вы уже находитесь в лобби. Сначала выйдите.");
-      return;
-    }
-  }
-  const color = prompt("Выберите цвет (red, blue, green, yellow, purple)", "red") || "red";
-  try {
-    const res = await fetchJSON("/api/lobby/join", {
-      method: "POST",
-      body: JSON.stringify({
-        lobby: lobbyId,
-        password,
-        color,
-        player_name: playerName(),
-      })
-    });
-    localStorage["lobby_you_" + lobbyId] = JSON.stringify(res.lobby.players.find(p => p.uid === uid()) || {});
-    waitAndAutoOpen(lobbyId);   // <— подписка + автооткрытие по "started"
-    refresh();
-  } catch(e) { alert(e.message); }
-}
-async function leaveLobby(lobbyId) {
-  try {
-    await fetchJSON("/api/lobby/leave", {
-      method: "POST",
-      body: JSON.stringify({lobby: lobbyId})
-    });
-    localStorage.removeItem("lobby_you_" + lobbyId);
-    refresh();
-  } catch(e) { alert(e.message); }
-}
-async function startLobby(lobbyId) {
-  try {
-    await fetchJSON("/api/lobby/start", {
-      method: "POST",
-      body: JSON.stringify({lobby: lobbyId})
-    });
-    // события "started" разойдутся по SSE — у всех будет редирект
-  } catch(e) { alert(e.message); }
+  $dlgJoin.classList.remove("hidden");
 }
 
-// ======= SSE: ждём "started" и уходим в game.html =======
-function waitAndAutoOpen(lobbyId) {
-  if (!window._sse) window._sse = {};
-  if (window._sse[lobbyId]) return;
+// Подписка на SSE, если мы участник лобби
+function subscribeIfMember(lobby){
+  const me = (lobby.players || []).find(p => p.uid === uuid());
+  if (!me) return;
 
-  const es = new EventSource(`/events/${encodeURIComponent(lobbyId)}`);
-  window._sse[lobbyId] = es;
+  // Если уже подписаны на это лобби — не создаём вторую
+  if (activeSub && activeSub.lobbyId === lobby.id) return;
+  // Закрыть пред. подписку
+  if (activeSub && activeSub.es) try{ activeSub.es.close(); }catch(_){}
+  activeSub = null;
 
-  es.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data || "{}");
-      if (data.type === "started") {
-        es.close();
-        window.location.href = `/game.html?lobby=${encodeURIComponent(lobbyId)}`;
+  const es = new EventSource(`/events/${encodeURIComponent(lobby.id)}`);
+  es.onmessage = (e)=>{
+    try{
+      const msg = JSON.parse(e.data);
+      if (msg.type === "started"){
+        window.location.href = `/game.html?lobby=${encodeURIComponent(lobby.id)}`;
       }
-      if (data.type === "state") {
-        // можно обновлять отображение игроков, но мы просто обновим список
-        refresh();
-      }
-    } catch {}
+      // можно обновлять список при msg.type === "state"
+    }catch(_){}
   };
+  es.onerror = ()=>{/* игнор, сервер шлёт keepalive */};
 
-  es.onerror = () => {
-    // Можно переподключаться, если хочется
-    // setTimeout(() => { delete window._sse[lobbyId]; waitAndAutoOpen(lobbyId); }, 2000);
-  };
+  activeSub = {es, lobbyId: lobby.id};
 }
 
-// первичная загрузка
-refresh();
+// поиск
+$search.oninput = () => load();
+
+// первая загрузка
+load();
+
