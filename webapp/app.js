@@ -1,120 +1,199 @@
-const params = new URLSearchParams(location.search);
-let CURRENT = params.get("u") || localStorage.getItem("u");
-if (!CURRENT) { CURRENT = "player_" + Math.floor(Math.random()*10000); localStorage.setItem("u", CURRENT); }
-
-const api = {
-  async list(){ return (await fetch("/api/lobbies")).json(); },
-  async create(payload){ const r=await fetch("/api/lobbies",{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({...payload,owner:CURRENT})}); if(!r.ok) throw new Error(await r.text()); return r.json(); },
-  async join(id,pass,color){ const r=await fetch(`/api/lobbies/${id}/join`,{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({who:CURRENT,password:pass,color})}); if(!r.ok) throw new Error(await r.text()); return r.json(); },
-  async leave(id){ const r=await fetch(`/api/lobbies/${id}/leave`,{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({who:CURRENT})}); if(!r.ok) throw new Error(await r.text()); return r.json(); },
-  async start(id){ const r=await fetch(`/api/lobbies/${id}/start`,{method:"POST",headers:{'Content-Type':'application/json'},body:JSON.stringify({who:CURRENT})}); if(!r.ok) throw new Error(await r.text()); return r.json(); },
-};
-
-const els={
-  list:document.getElementById("lobbiesList"),
-  createBtn:document.getElementById("createBtn"),
-  refreshBtn:document.getElementById("refreshBtn"),
-  search:document.getElementById("search"),
-  dlg:document.getElementById("createDialog"),
-  dlgName:document.getElementById("dlgName"),
-  dlgPass:document.getElementById("dlgPass"),
-  dlgMax:document.getElementById("dlgMax"),
-  dlgColor:document.getElementById("dlgColor"),
-  dlgOk:document.getElementById("dlgOk"),
-  dlgCancel:document.getElementById("dlgCancel"),
-  joinDlg:document.getElementById("joinDialog"),
-  joinTitle:document.getElementById("joinTitle"),
-  joinPass:document.getElementById("joinPass"),
-  joinColor:document.getElementById("joinColor"),
-  joinOk:document.getElementById("joinOk"),
-  joinCancel:document.getElementById("joinCancel"),
-  joinOpenDlg:document.getElementById("joinOpenDialog"),
-  joinOpenTitle:document.getElementById("joinOpenTitle"),
-  joinOpenColor:document.getElementById("joinOpenColor"),
-  joinOpenOk:document.getElementById("joinOpenOk"),
-  joinOpenCancel:document.getElementById("joinOpenCancel"),
-};
-
-let CACHE=[];
-
-function isMember(l){ return (l.members||[]).includes(CURRENT); }
-function busy(){ return CACHE.some(l => !l.started && isMember(l)); }
-function dot(c){ return `<span class="dot" style="background:${c}"></span>`; }
-
-function row(l){
-  const member=isMember(l), full=l.players>=l.max_players, canStart=(l.owner===CURRENT && l.players>=2 && !l.started);
-  let buttons="";
-  if(l.started){
-    if(member) buttons+=`<button data-id="${l.id}" class="gotoBtn">К игре</button>`;
-  }else{
-    if(member) buttons+=`<button data-id="${l.id}" class="leaveBtn">Покинуть</button>`;
-    else if(l.locked) buttons+=`<button data-id="${l.id}" class="joinLocked" ${full?"disabled":""}>Войти</button>`;
-    else buttons+=`<button data-id="${l.id}" class="joinOpen" ${full?"disabled":""}>Войти</button>`;
-    if(canStart) buttons+=`<button data-id="${l.id}" class="startBtn">Запустить</button>`;
+// ======= УТИЛИТЫ =======
+function uid() {
+  if (!localStorage.uid) {
+    localStorage.uid = "u_" + Math.random().toString(36).slice(2);
   }
-  const cols = Object.values(l.taken_colors||{}).map(dot).join("");
-  return `<li class="lobby">
-    <div class="name">${l.name} <span class="id">#${l.id}</span></div>
-    <div class="meta">${l.players}/${l.max_players} · ${l.locked?'🔒 приватное':'открытое'} ${cols?(' · '+cols):''}</div>
-    <div class="actions">${buttons}</div>
-  </li>`;
+  return localStorage.uid;
+}
+function playerName() {
+  if (!localStorage.playerName) localStorage.playerName = "Игрок";
+  return localStorage.playerName;
+}
+function fetchJSON(url, opts={}) {
+  opts.headers = Object.assign({}, opts.headers || {}, {
+    "X-UID": uid(),
+    "Content-Type": "application/json",
+  });
+  return fetch(url, opts).then(r => {
+    if (!r.ok) return r.text().then(t => { throw new Error(t || r.statusText); });
+    return r.json();
+  });
 }
 
-function render(){
-  const q=(els.search.value||"").toLowerCase();
-  const list=q?CACHE.filter(l=> (l.name||"").toLowerCase().includes(q)) : CACHE;
-  els.list.innerHTML=list.map(row).join("");
+// ======= UI =======
+const $list = document.getElementById("list");
+const $search = document.getElementById("search");
+const $dlgCreate = document.getElementById("dlgCreate");
 
-  els.list.querySelectorAll(".joinOpen").forEach(b=>b.onclick=()=>{
-    if(busy()) return alert("Сначала покиньте текущее лобби");
-    els.joinOpenDlg.dataset.id=b.dataset.id;
-    els.joinOpenTitle.textContent=`Лобби #${b.dataset.id} — выберите цвет`;
-    els.joinOpenColor.value="red"; els.joinOpenDlg.showModal();
-  });
-  els.list.querySelectorAll(".joinLocked").forEach(b=>b.onclick=()=>{
-    if(busy()) return alert("Сначала покиньте текущее лобби");
-    els.joinDlg.dataset.id=b.dataset.id;
-    els.joinTitle.textContent=`Лобби #${b.dataset.id} — пароль и цвет`;
-    els.joinPass.value=""; els.joinColor.value="red"; els.joinDlg.showModal();
-  });
-  els.list.querySelectorAll(".leaveBtn").forEach(b=>b.onclick=async()=>{
-    await api.leave(b.dataset.id); await refresh();
-  });
-  els.list.querySelectorAll(".startBtn").forEach(b=>b.onclick=async()=>{
-    const r=await api.start(b.dataset.id);
-    // сразу в игру
-    location.href=`/game?lobby=${b.dataset.id}`;
-  });
-  els.list.querySelectorAll(".gotoBtn").forEach(b=>b.onclick=()=>{
-    location.href=`/game?lobby=${b.dataset.id}`;
-  });
+document.getElementById("btnRefresh").onclick = refresh;
+document.getElementById("btnCreate").onclick = () => $dlgCreate.classList.remove("hidden");
 
-  els.createBtn.disabled = busy();
+// диалог создания
+document.getElementById("c_cancel").onclick = () => $dlgCreate.classList.add("hidden");
+document.getElementById("c_ok").onclick = async () => {
+  const body = {
+    name: document.getElementById("c_name").value.trim() || "Лобби",
+    max_players: +document.getElementById("c_max").value,
+    private: document.getElementById("c_private").checked,
+    password: document.getElementById("c_password").value || null,
+    color: document.getElementById("c_color").value,
+    player_name: document.getElementById("c_player").value.trim() || playerName(),
+  };
+  localStorage.playerName = body.player_name;
+  try {
+    const res = await fetchJSON("/api/lobby/create", {method: "POST", body: JSON.stringify(body)});
+    $dlgCreate.classList.add("hidden");
+    // подписываемся и ждём старта
+    waitAndAutoOpen(res.lobby.id);
+    refresh();
+  } catch(e) { alert(e.message); }
+};
+
+$search.oninput = refresh;
+
+async function refresh() {
+  try {
+    const data = await fetchJSON("/api/lobbies");
+    renderList(data.items.filter(it => it.name.toLowerCase().includes($search.value.toLowerCase())));
+  } catch(e) { console.error(e); }
 }
 
-async function refresh(){ const data=await api.list(); CACHE=data.lobbies||[]; render(); }
+function renderList(items) {
+  $list.innerHTML = "";
+  items.forEach(item => {
+    const div = document.createElement("div");
+    div.className = "card lobby-line";
 
-els.createBtn.onclick=()=>{
-  els.dlgName.value=""; els.dlgPass.value=""; els.dlgMax.value="4"; els.dlgColor.value="red";
-  els.dlg.showModal();
-};
-els.refreshBtn.onclick=refresh; els.search.oninput=render;
-els.dlgCancel.onclick=()=>els.dlg.close();
-els.dlgOk.onclick=async()=>{
-  try{
-    await api.create({name:els.dlgName.value.trim(), password:els.dlgPass.value.trim(), max_players:parseInt(els.dlgMax.value,10), color:els.dlgColor.value});
-    els.dlg.close(); await refresh();
-  }catch(e){ alert("Ошибка: "+e.message); }
-};
-els.joinCancel.onclick=()=>els.joinDlg.close();
-els.joinOk.onclick=async()=>{
-  try{ await api.join(els.joinDlg.dataset.id, els.joinPass.value.trim(), els.joinColor.value);
-       els.joinDlg.close(); await refresh(); }catch(e){ alert("Ошибка: "+e.message); }
-};
-els.joinOpenCancel.onclick=()=>els.joinOpenDlg.close();
-els.joinOpenOk.onclick=async()=>{
-  try{ await api.join(els.joinOpenDlg.dataset.id, "", els.joinOpenColor.value);
-       els.joinOpenDlg.close(); await refresh(); }catch(e){ alert("Ошибка: "+e.message); }
-};
+    let colors = "";
+    for (const p of item.players) {
+      colors += `<span class="dot" style="background:${p.color}"></span>`;
+    }
 
+    div.innerHTML = `
+      <div style="flex:1 1 auto">
+        <div><b>${escapeHtml(item.name)}</b>  <span class="muted">#${item.id}</span></div>
+        <div class="muted">${item.players_count}/${item.max_players} · ${item.private ? "приватное" : "открытое"} · ${colors}</div>
+      </div>
+      <div class="row">
+        <button class="btnJoin">Войти</button>
+        <button class="btnLeave hidden">Покинуть</button>
+        <button class="btnStart hidden primary">Старт</button>
+      </div>
+    `;
+
+    const isMe = inLobby(item.id);
+    const amOwner = isMe && whoAmI(item.id)?.owner;
+
+    const btnJoin = div.querySelector(".btnJoin");
+    const btnLeave = div.querySelector(".btnLeave");
+    const btnStart = div.querySelector(".btnStart");
+
+    btnJoin.onclick = () => joinDialog(item);
+    btnLeave.onclick = () => leaveLobby(item.id);
+    btnStart.onclick = () => startLobby(item.id);
+
+    // Показываем/скрываем кнопки
+    btnJoin.classList.toggle("hidden", isMe);
+    btnLeave.classList.toggle("hidden", !isMe);
+    btnStart.classList.toggle("hidden", !amOwner);
+
+    $list.appendChild(div);
+  });
+}
+
+function escapeHtml(s){return s.replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));}
+
+// локальная «память» о том, где мы состоим
+function inLobby(id) {
+  const you = localStorage["lobby_you_" + id];
+  return !!you;
+}
+function whoAmI(id) {
+  const s = localStorage["lobby_you_" + id];
+  try { return JSON.parse(s || "null"); } catch { return null; }
+}
+
+// ======= JOIN / LEAVE / START  =======
+async function joinDialog(item) {
+  if (item.private) {
+    const pwd = prompt("Пароль для входа?");
+    if (pwd === null) return;
+    await joinLobby(item.id, pwd);
+  } else {
+    await joinLobby(item.id, null);
+  }
+}
+async function joinLobby(lobbyId, password) {
+  // нельзя одновременно находиться в нескольких лобби
+  for (const k of Object.keys(localStorage)) {
+    if (k.startsWith("lobby_you_")) {
+      alert("Вы уже находитесь в лобби. Сначала выйдите.");
+      return;
+    }
+  }
+  const color = prompt("Выберите цвет (red, blue, green, yellow, purple)", "red") || "red";
+  try {
+    const res = await fetchJSON("/api/lobby/join", {
+      method: "POST",
+      body: JSON.stringify({
+        lobby: lobbyId,
+        password,
+        color,
+        player_name: playerName(),
+      })
+    });
+    localStorage["lobby_you_" + lobbyId] = JSON.stringify(res.lobby.players.find(p => p.uid === uid()) || {});
+    waitAndAutoOpen(lobbyId);   // <— подписка + автооткрытие по "started"
+    refresh();
+  } catch(e) { alert(e.message); }
+}
+async function leaveLobby(lobbyId) {
+  try {
+    await fetchJSON("/api/lobby/leave", {
+      method: "POST",
+      body: JSON.stringify({lobby: lobbyId})
+    });
+    localStorage.removeItem("lobby_you_" + lobbyId);
+    refresh();
+  } catch(e) { alert(e.message); }
+}
+async function startLobby(lobbyId) {
+  try {
+    await fetchJSON("/api/lobby/start", {
+      method: "POST",
+      body: JSON.stringify({lobby: lobbyId})
+    });
+    // события "started" разойдутся по SSE — у всех будет редирект
+  } catch(e) { alert(e.message); }
+}
+
+// ======= SSE: ждём "started" и уходим в game.html =======
+function waitAndAutoOpen(lobbyId) {
+  if (!window._sse) window._sse = {};
+  if (window._sse[lobbyId]) return;
+
+  const es = new EventSource(`/events/${encodeURIComponent(lobbyId)}`);
+  window._sse[lobbyId] = es;
+
+  es.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data || "{}");
+      if (data.type === "started") {
+        es.close();
+        window.location.href = `/game.html?lobby=${encodeURIComponent(lobbyId)}`;
+      }
+      if (data.type === "state") {
+        // можно обновлять отображение игроков, но мы просто обновим список
+        refresh();
+      }
+    } catch {}
+  };
+
+  es.onerror = () => {
+    // Можно переподключаться, если хочется
+    // setTimeout(() => { delete window._sse[lobbyId]; waitAndAutoOpen(lobbyId); }, 2000);
+  };
+}
+
+// первичная загрузка
 refresh();
