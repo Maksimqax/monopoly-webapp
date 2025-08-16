@@ -15,7 +15,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# === STATIC ===
+# ==== STATIC ====
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "webapp")
 if not os.path.isdir(STATIC_DIR):
     raise RuntimeError(f"Static dir not found: {STATIC_DIR}")
@@ -28,9 +28,18 @@ async def index():
     with open(index_path, "r", encoding="utf-8") as f:
         return HTMLResponse(f.read())
 
-# === IN-MEMORY LOBBIES ===
-# NB: для прототипа "owner" и "you" — плейсхолдеры. Позже подставим реального юзера из Telegram initData.
-lobbies = {}  # id -> lobby dict
+
+# ==== SIMPLE IN-MEMORY STORAGE ====
+# В проде это надо вынести в БД/Redis.
+lobbies: dict[str, dict] = {}
+
+# доступные цвета фишек
+ALLOWED_COLORS = ["red", "blue", "green", "yellow", "purple", "orange"]
+
+
+def _validate_color(color: str):
+    if color not in ALLOWED_COLORS:
+        raise HTTPException(400, "Недопустимый цвет")
 
 
 @app.get("/api/lobbies")
@@ -45,6 +54,7 @@ async def get_lobbies():
                 "locked": bool(lb.get("password")),
                 "owner": lb["owner"],
                 "started": lb.get("started", False),
+                "taken_colors": lb["taken_colors"],  # {user: color}
             }
             for lid, lb in lobbies.items()
         ]
@@ -57,12 +67,19 @@ async def create_lobby(req: Request):
     name = (data.get("name") or "").strip()
     max_players = int(data.get("max_players") or 4)
     password = (data.get("password") or "").strip()
-    owner = (data.get("owner") or "you").strip()  # TEMP
+    owner = (data.get("owner") or "you").strip()
+    color = (data.get("color") or "").strip()
 
     if not name:
         raise HTTPException(400, "Название лобби обязательно")
     if max_players < 2 or max_players > 5:
         raise HTTPException(400, "Количество игроков — от 2 до 5")
+    _validate_color(color)
+
+    # уже есть активное лобби этого владельца?
+    for lb in lobbies.values():
+        if lb["owner"] == owner and not lb.get("started", False):
+            raise HTTPException(400, "У вас уже есть активное лобби")
 
     lobby_id = uuid.uuid4().hex[:6].upper()
     lobbies[lobby_id] = {
@@ -70,8 +87,10 @@ async def create_lobby(req: Request):
         "max_players": max_players,
         "password": password or None,
         "owner": owner,
-        "players": 1,            # создатель уже в лобби
-        "members": [owner],      # список ников
+        "players": 1,                 # создатель внутри
+        "members": [owner],
+        "taken_colors": {owner: color},  # занятые цвета: user -> color
+        "used_colors": {color},          # set занятых цветов
         "started": False,
     }
     return {"ok": True, "id": lobby_id}
@@ -84,45 +103,66 @@ async def join_lobby(lobby_id: str, req: Request):
 
     data = await req.json()
     password = (data.get("password") or "").strip()
-    who = (data.get("who") or "you").strip()  # TEMP
+    who = (data.get("who") or "you").strip()
+    color = (data.get("color") or "").strip()
+    _validate_color(color)
 
-    lobby = lobbies[lobby_id]
+    lb = lobbies[lobby_id]
 
-    if lobby.get("password") and lobby["password"] != password:
+    if lb.get("password") and lb["password"] != password:
         raise HTTPException(403, "Неверный пароль")
 
-    if who not in lobby["members"]:
-        if lobby["players"] >= lobby["max_players"]:
-            raise HTTPException(400, "Лобби заполнено")
-        lobby["players"] += 1
-        lobby["members"].append(who)
+    # если уже в лобби — просто возвращаем инфо (но нельзя сменить цвет задним числом)
+    if who in lb["members"]:
+        return {
+            "ok": True,
+            "lobby": {
+                "id": lobby_id,
+                "name": lb["name"],
+                "players": lb["players"],
+                "max_players": lb["max_players"],
+                "owner": lb["owner"],
+                "started": lb["started"],
+                "taken_colors": lb["taken_colors"],
+            },
+        }
+
+    if lb["players"] >= lb["max_players"]:
+        raise HTTPException(400, "Лобби заполнено")
+    if color in lb["used_colors"]:
+        raise HTTPException(400, "Этот цвет уже занят")
+
+    lb["players"] += 1
+    lb["members"].append(who)
+    lb["taken_colors"][who] = color
+    lb["used_colors"].add(color)
 
     return {
         "ok": True,
         "lobby": {
             "id": lobby_id,
-            "name": lobby["name"],
-            "players": lobby["players"],
-            "max_players": lobby["max_players"],
-            "owner": lobby["owner"],
-            "started": lobby["started"],
+            "name": lb["name"],
+            "players": lb["players"],
+            "max_players": lb["max_players"],
+            "owner": lb["owner"],
+            "started": lb["started"],
+            "taken_colors": lb["taken_colors"],
         },
     }
 
 
 @app.post("/api/lobbies/{lobby_id}/start")
 async def start_lobby(lobby_id: str, req: Request):
-    """Запуск игры создателем лобби (пока просто флаг started=True)."""
     if lobby_id not in lobbies:
         raise HTTPException(404, "Лобби не найдено")
     data = await req.json()
     who = (data.get("who") or "you").strip()
 
-    lobby = lobbies[lobby_id]
-    if who != lobby["owner"]:
+    lb = lobbies[lobby_id]
+    if who != lb["owner"]:
         raise HTTPException(403, "Только создатель может запускать игру")
-    if lobby["players"] < 2:
+    if lb["players"] < 2:
         raise HTTPException(400, "Нужно минимум 2 игрока")
 
-    lobby["started"] = True
+    lb["started"] = True
     return {"ok": True, "message": "Игра запущена", "lobby": {"id": lobby_id}}

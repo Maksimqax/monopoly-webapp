@@ -17,7 +17,7 @@
 
   <details class="howto" open>
     <summary>Как играть</summary>
-    <p>Создайте лобби (название/пароль/2–5 игроков), поделитесь ID.
+    <p>Создайте лобби (название/пароль/2–5 игроков + цвет фишки), поделитесь ID.
        Открытые лобби — без пароля. Создатель запускает игру.</p>
   </details>
 
@@ -25,7 +25,7 @@
     <ul id="lobbiesList" class="lobbies"></ul>
   </section>
 
-  <!-- модалка создания -->
+  <!-- Создание лобби -->
   <dialog id="createDialog">
     <h3>Новое лобби</h3>
     <label>Название <input id="dlgName" /></label>
@@ -38,19 +38,58 @@
         <option>5</option>
       </select>
     </label>
+    <label>Ваш цвет
+      <select id="dlgColor" class="color">
+        <option value="red">Красный</option>
+        <option value="blue">Синий</option>
+        <option value="green">Зелёный</option>
+        <option value="yellow">Жёлтый</option>
+        <option value="purple">Фиолетовый</option>
+        <option value="orange">Оранжевый</option>
+      </select>
+    </label>
     <menu>
       <button id="dlgCancel">Отмена</button>
       <button id="dlgOk">Создать</button>
     </menu>
   </dialog>
 
-  <!-- модалка пароля -->
+  <!-- Вход в приватное лобби -->
   <dialog id="joinDialog">
     <div id="joinTitle"></div>
     <label>Пароль <input id="joinPass"/></label>
+    <label>Ваш цвет
+      <select id="joinColor" class="color">
+        <option value="red">Красный</option>
+        <option value="blue">Синий</option>
+        <option value="green">Зелёный</option>
+        <option value="yellow">Жёлтый</option>
+        <option value="purple">Фиолетовый</option>
+        <option value="orange">Оранжевый</option>
+      </select>
+    </label>
     <menu>
       <button id="joinCancel">Отмена</button>
       <button id="joinOk">Войти</button>
+    </menu>
+  </dialog>
+
+  <!-- Вход в открытое лобби (чтобы выбрать цвет) -->
+  <dialog id="joinOpenDialog">
+    <div id="joinOpenTitle"></div>
+    <label>Ваш цвет
+      <select id="joinOpenColor" class="color">
+        <option value="red">Красный</option>
+        <option value="blue">Синий</option>
+        <option value="green">Зелёный</option>
+        <option value="yellow">Жёлтый</option>
+        <option value="purple">Фиолетовый</option>
+        <option value="orange">Оранжевый</option>
+      </select>
+    </label>
+    <menu>
+      <button id="joinOpenCancel">Отмена</button>
+      <button id="joinOpenOk">Войти</button>
     </menu>
   </dialog>
 
