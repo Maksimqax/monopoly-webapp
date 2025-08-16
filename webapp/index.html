@@ -5,23 +5,18 @@
   <meta name="viewport"
         content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
   <title>Монополия — лобби</title>
-  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/static/style.css" />
   <style>
     body { margin: 0; background: #0f1720; color: #e5eef9; font-family: system-ui, -apple-system, Segoe UI, Roboto; }
     .wrap { padding: 16px; max-width: 900px; margin: 0 auto; }
     h1 { font-size: 22px; margin: 8px 0 12px; }
     .row { display: flex; gap: 8px; flex-wrap: wrap; }
-    input, select, button {
-      background: #111b26; color: #e5eef9; border: 1px solid #2b3b4c;
-      padding: 10px 12px; border-radius: 10px; outline: none;
-    }
-    button.primary { background: #1e88e5; border-color: #1e88e5; }
-    .card { background: #0e1a24; border: 1px solid #223244; border-radius: 12px; padding: 12px; margin: 10px 0; }
-    .lobby-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .colors { display: inline-flex; gap:6px; vertical-align: middle; }
-    .dot { width: 10px; height:10px; border-radius:50%; display:inline-block; }
+    input, select, button { background:#111b26; color:#e5eef9; border:1px solid #2b3b4c; padding:10px 12px; border-radius:10px; }
+    button.primary { background:#1e88e5; border-color:#1e88e5; }
+    .card { background:#0e1a24; border:1px solid #223244; border-radius:12px; padding:12px; margin:10px 0; }
+    .lobby-line { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .dot { width:10px; height:10px; border-radius:50%; display:inline-block; }
     .muted { color:#a5b5c5; font-size:13px; }
-    .danger { color:#ff6b6b; }
     .hidden { display:none; }
   </style>
 </head>
@@ -30,7 +25,7 @@
   <h1>Монополия — лобби</h1>
 
   <div class="row" style="margin-bottom:10px;">
-    <input id="search" placeholder="Поиск по названию…" style="flex:1 1 auto;">
+    <input id="search" placeholder="Поиск по названию…" style="flex:1">
     <button id="btnCreate" class="primary">Создать лобби</button>
     <button id="btnRefresh">Обновить</button>
   </div>
@@ -75,6 +70,6 @@
   </div>
 </div>
 
-<script src="/app.js"></script>
+<script src="/static/app.js"></script>
 </body>
 </html>
