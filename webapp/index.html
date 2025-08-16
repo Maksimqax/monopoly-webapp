@@ -1,99 +1,86 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Монополия — лобби</title>
-  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/style.css"/>
 </head>
 <body>
-  <header>
-    <h1>Монополия — лобби</h1>
-    <div class="controls">
-      <input id="search" placeholder="Поиск по названию…" />
-      <button id="refreshBtn">Обновить</button>
-      <button id="createBtn">Создать лобби</button>
-    </div>
-  </header>
+<header>
+  <h1>Монополия — лобби</h1>
+  <div class="controls">
+    <input id="search" placeholder="Поиск по названию…"/>
+    <button id="refreshBtn">Обновить</button>
+    <button id="createBtn">Создать лобби</button>
+  </div>
+</header>
 
-  <details class="howto" open>
-    <summary>Как играть</summary>
-    <p>Создайте лобби (название/пароль/2–5 игроков + цвет фишки), поделитесь ID.
-       Открытые лобби — без пароля. Создатель запускает игру.</p>
-  </details>
+<details class="howto" open>
+  <summary>Как играть</summary>
+  <p>Создайте лобби (название/пароль/2–5 игроков + цвет фишки), поделитесь ID.
+    Открытые лобби — без пароля. Создатель запускает игру.</p>
+</details>
 
-  <section>
-    <ul id="lobbiesList" class="lobbies"></ul>
-  </section>
+<section>
+  <ul id="lobbiesList" class="lobbies"></ul>
+</section>
 
-  <!-- Создание лобби -->
-  <dialog id="createDialog">
-    <h3>Новое лобби</h3>
-    <label>Название <input id="dlgName" /></label>
-    <label>Пароль <input id="dlgPass" placeholder="необязательно"/></label>
-    <label>Игроков
-      <select id="dlgMax">
-        <option>2</option>
-        <option>3</option>
-        <option selected>4</option>
-        <option>5</option>
-      </select>
-    </label>
-    <label>Ваш цвет
-      <select id="dlgColor" class="color">
-        <option value="red">Красный</option>
-        <option value="blue">Синий</option>
-        <option value="green">Зелёный</option>
-        <option value="yellow">Жёлтый</option>
-        <option value="purple">Фиолетовый</option>
-        <option value="orange">Оранжевый</option>
-      </select>
-    </label>
-    <menu>
-      <button id="dlgCancel">Отмена</button>
-      <button id="dlgOk">Создать</button>
-    </menu>
-  </dialog>
+<!-- диалоги (создание/вход) -->
+<dialog id="createDialog">
+  <h3>Новое лобби</h3>
+  <label>Название <input id="dlgName"/></label>
+  <label>Пароль <input id="dlgPass" placeholder="необязательно"/></label>
+  <label>Игроков
+    <select id="dlgMax">
+      <option>2</option><option>3</option><option selected>4</option><option>5</option>
+    </select>
+  </label>
+  <label>Ваш цвет
+    <select id="dlgColor" class="color">
+      <option value="red">Красный</option><option value="blue">Синий</option>
+      <option value="green">Зелёный</option><option value="yellow">Жёлтый</option>
+      <option value="purple">Фиолетовый</option><option value="orange">Оранжевый</option>
+    </select>
+  </label>
+  <menu>
+    <button id="dlgCancel">Отмена</button>
+    <button id="dlgOk">Создать</button>
+  </menu>
+</dialog>
 
-  <!-- Пароль + цвет (для приватного входа) -->
-  <dialog id="joinDialog">
-    <div id="joinTitle"></div>
-    <label>Пароль <input id="joinPass"/></label>
-    <label>Ваш цвет
-      <select id="joinColor" class="color">
-        <option value="red">Красный</option>
-        <option value="blue">Синий</option>
-        <option value="green">Зелёный</option>
-        <option value="yellow">Жёлтый</option>
-        <option value="purple">Фиолетовый</option>
-        <option value="orange">Оранжевый</option>
-      </select>
-    </label>
-    <menu>
-      <button id="joinCancel">Отмена</button>
-      <button id="joinOk">Войти</button>
-    </menu>
-  </dialog>
+<dialog id="joinDialog">
+  <div id="joinTitle"></div>
+  <label>Пароль <input id="joinPass"/></label>
+  <label>Ваш цвет
+    <select id="joinColor" class="color">
+      <option value="red">Красный</option><option value="blue">Синий</option>
+      <option value="green">Зелёный</option><option value="yellow">Жёлтый</option>
+      <option value="purple">Фиолетовый</option><option value="orange">Оранжевый</option>
+    </select>
+  </label>
+  <menu>
+    <button id="joinCancel">Отмена</button>
+    <button id="joinOk">Войти</button>
+  </menu>
+</dialog>
 
-  <!-- Цвет (для открытого входа) -->
-  <dialog id="joinOpenDialog">
-    <div id="joinOpenTitle"></div>
-    <label>Ваш цвет
-      <select id="joinOpenColor" class="color">
-        <option value="red">Красный</option>
-        <option value="blue">Синий</option>
-        <option value="green">Зелёный</option>
-        <option value="yellow">Жёлтый</option>
-        <option value="purple">Фиолетовый</option>
-        <option value="orange">Оранжевый</option>
-      </select>
-    </label>
-    <menu>
-      <button id="joinOpenCancel">Отмена</button>
-      <button id="joinOpenOk">Войти</button>
-    </menu>
-  </dialog>
+<dialog id="joinOpenDialog">
+  <div id="joinOpenTitle"></div>
+  <label>Ваш цвет
+    <select id="joinOpenColor" class="color">
+      <option value="red">Красный</option><option value="blue">Синий</option>
+      <option value="green">Зелёный</option><option value="yellow">Жёлтый</option>
+      <option value="purple">Фиолетовый</option><option value="orange">Оранжевый</option>
+    </select>
+  </label>
+  <menu>
+    <button id="joinOpenCancel">Отмена</button>
+    <button id="joinOpenOk">Войти</button>
+  </menu>
+</dialog>
 
-  <script src="/static/app.js"></script>
+<script src="/static/app.js"></script>
 </body>
 </html>
+

@@ -1,69 +1,49 @@
 :root { color-scheme: dark; }
-body {
-  margin: 0 auto;
-  max-width: 1100px;
-  padding: 24px 16px;
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  color: #e6eef7;
-  background: #0f1720;
-}
-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-h1 { margin: 0; font-size: 28px; }
+body { margin:0 auto; max-width:1100px; padding:24px 16px; font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif; color:#e6eef7; background:#0f1720; }
+header { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; }
+h1 { margin:0; font-size:28px; }
 .controls { display:flex; gap:10px; align-items:center; }
-.controls input {
-  width: 260px;
-  background:#0b1220; color:#e6eef7; border:1px solid rgba(255,255,255,.15);
-  padding:8px 10px; border-radius:8px;
+.controls input { width:260px; background:#0b1220; color:#e6eef7; border:1px solid rgba(255,255,255,.15); padding:8px 10px; border-radius:8px; }
+
+.howto { margin:10px 0 20px; background:#121c27; padding:12px 16px; border-radius:8px; }
+.lobbies { list-style:none; padding:0; margin:0; }
+.lobby { display:grid; grid-template-columns:1fr 240px auto; gap:12px; align-items:center; padding:12px 14px; border-radius:10px; background:#121c27; margin-bottom:10px; border:1px solid rgba(255,255,255,.05); }
+.name { font-weight:600; } .name .id { color:#8aa6c1; margin-left:8px; }
+.meta { color:#8aa6c1; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.actions { display:flex; justify-content:flex-end; gap:8px; }
+button { background:#0b1220; color:#e6eef7; border:1px solid rgba(255,255,255,.15); padding:8px 10px; border-radius:8px; cursor:pointer; }
+button:hover { background:#132035; } button:disabled { opacity:.5; cursor:not-allowed; }
+dialog { border:1px solid rgba(255,255,255,.1); border-radius:10px; background:#0f1720; color:#e6eef7; padding:16px 20px; }
+label { display:block; margin:8px 0; }
+input,select { background:#0b1220; color:#e6eef7; border:1px solid rgba(255,255,255,.15); padding:8px 10px; border-radius:8px; width:100%; }
+menu { display:flex; gap:10px; justify-content:flex-end; padding:0; margin-top:10px; }
+.dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-left:6px; vertical-align:middle; border:1px solid rgba(255,255,255,.25); }
+
+/* --- GAME page (ниже) --- */
+#gameWrap { display:flex; gap:14px; }
+#left { flex:1; min-width:620px; }
+#right { width:360px; background:#121c27; padding:10px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.05); }
+
+#board {
+  position:relative;
+  width:620px; height:860px;           /* вертикальная область */
+  margin:0 auto; background:#0b1220; border-radius:10px;
+  border:1px solid rgba(255,255,255,.08); overflow:hidden;
 }
 
-.howto { margin: 10px 0 20px; background:#121c27; padding:12px 16px; border-radius:8px; }
+/* если есть картинка горизонтального поля — кладём её и поворачиваем */
+#board.has-bg::before{
+  content:""; position:absolute; inset:0;
+  background:url('/static/img/board-h.png') center/contain no-repeat;
+  transform:rotate(90deg) scale(1); transform-origin:center;
+  filter:drop-shadow(0 0 10px rgba(0,0,0,.4));
+}
 
-.lobbies { list-style: none; padding: 0; margin: 0; }
-.lobby {
-  display: grid;
-  grid-template-columns: 1fr 240px auto;
-  gap: 12px;
-  align-items: center;
-  padding: 12px 14px;
-  border-radius: 10px;
-  background: #121c27;
-  margin-bottom: 10px;
-  border: 1px solid rgba(255,255,255,.05);
-}
-.name { font-weight: 600; }
-.name .id { color: #8aa6c1; margin-left: 8px; }
-.meta { color:#8aa6c1; white-space: nowrap; overflow:hidden; text-overflow: ellipsis; }
-.actions { display:flex; justify-content:flex-end; align-items:center; gap:8px; }
+/* фишки игроков */
+.token { position:absolute; width:14px; height:14px; border-radius:50%; border:2px solid rgba(0,0,0,.5); }
 
-button {
-  background: #0b1220; color: #e6eef7; border:1px solid rgba(255,255,255,.15);
-  padding: 8px 10px; border-radius: 8px; cursor: pointer;
-}
-button:hover { background:#132035; }
-button:disabled { opacity:.5; cursor: not-allowed; }
-
-dialog {
-  border: 1px solid rgba(255,255,255,.1);
-  border-radius: 10px;
-  background: #0f1720;
-  color: #e6eef7;
-  padding: 16px 20px;
-}
-label { display:block; margin: 8px 0; }
-input, select {
-  background: #0b1220; color: #e6eef7; border:1px solid rgba(255,255,255,.15);
-  padding: 8px 10px; border-radius: 8px; width: 100%;
-}
-menu { display:flex; gap:10px; justify-content: flex-end; padding:0; margin-top: 10px; }
-
-/* цветные кружки занятых цветов */
-.dot {
-  display:inline-block; width:10px; height:10px; border-radius:50%;
-  margin-left:6px; vertical-align:middle; border:1px solid rgba(255,255,255,.25);
-}
+/* панель хода */
+#panel button { margin-right:6px; }
+.log { font-size:14px; color:#c9def5; white-space:pre-line; }
+.players { font-size:14px; line-height:1.6; }
+.money { color:#8dd68d; }
